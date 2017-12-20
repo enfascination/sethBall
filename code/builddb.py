@@ -30,10 +30,7 @@ con = None
 try:
     con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
     cur = con.cursor()
-    ### autoinsert primary key https://stackoverflow.com/questions/3905378/manual-inserts-on-a-postgres-table-with-a-primary-key-sequence
-    cur.execute("CREATE SEQUENCE pk_test INCREMENT 1 MINVALUE 1 MAXVALUE 9223372036854775807 START 1 CACHE 1;")
-    cur.execute("CREATE TABLE coordinates(row INTEGER PRIMARY KEY CHECK (row=CURRVAL('pk_test')) DEFAULT NEXTVAL('pk_test'), x FLOAT NOT NULL DEFAULT 0, y FLOAT NOT NULL DEFAULT 0, z FLOAT DEFAULT NULL, vx FLOAT NOT NULL DEFAULT 0, vy FLOAT NOT NULL DEFAULT 0, vz FLOAT DEFAULT NULL );")
-    cur.execute("ALTER SEQUENCE pk_test OWNED BY coordinates.row;")
+    cur.execute("CREATE TABLE coordinates(row BIGSERIAL PRIMARY KEY, x FLOAT NOT NULL DEFAULT 0, y FLOAT NOT NULL DEFAULT 0, z FLOAT DEFAULT NULL, vx FLOAT NOT NULL DEFAULT 0, vy FLOAT NOT NULL DEFAULT 0, vz FLOAT DEFAULT NULL );")
     con.commit()
 except psycopg2.DatabaseError as e:
     if con:
