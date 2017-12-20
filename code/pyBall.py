@@ -5,6 +5,7 @@ import os
 import tqdm
 import matplotlib
 import gzip
+import psycopg2
 
 matplotlib.rcParams["mathtext.fontset"] = "stix"
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
@@ -67,6 +68,49 @@ def ball_data_load(file_name):
     except IndexError:
         pass
     return np.array(coordinates)
+
+def ball_phase_space_generate_db(n):
+    """Extracts all the points in phase space of the ball from 
+    the database built by running builddb.py
+    
+    INPUT
+    n  the number of observations to extract
+    
+    OUTPUT
+    coordinates  the coordinates object
+    """
+    coordinates = np.array([])
+    try:
+        con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
+        cur = con.cursor()
+        cur.execute("SELECT x, y, z, vz, vy, vz FROM coordinates LIMIT %s"%(n,))
+        #https://pythonspot.com/python-database-postgresql/
+        #while True:
+            #row = cur.fetchone()
+            #if row == None: break
+        coordinates = np.array(cur.fetchall())
+    except psycopg2.DatabaseError, e:
+        if con:
+            con.rollback()
+        print 'Error %s' % e
+    return( coordinates )
+
+def db_size():
+    """returns the number of entries in the database
+    
+    INPUT
+    
+    OUTPUT
+    n  the number of entries in the database
+    """
+    try:
+        con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
+        cur = con.cursor()
+        cur.execute("SELECT COUNT(*) FROM coordinates")
+    except psycopg2.DatabaseError, e:
+        print 'Error %s' % e
+    return( cur.fetchone()[0] )
+
 
 def _validate_point(point):
     #Validates a point by checking to make sure it is in the boundary of the court,

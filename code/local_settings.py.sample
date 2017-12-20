@@ -1,1 +1,3 @@
-dataPath = "~/cloud_public/Host/nba_tracking/"
+codePath = "/Users/sfrey/projecto/research_projects/nba_tracking/sethBall/code/" ### absolute path to your code (no ~)
+dataPath = "/Users/sfrey/cloud_public/Host/nba_tracking/" ### absolute path to your data
+psqlPath = "/Applications/Postgres.app/Contents/Versions/9.3/bin/" ### path to your psql binary
