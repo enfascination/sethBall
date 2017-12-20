@@ -1,4 +1,4 @@
-execfile("local_settings.py") ### for codePath dataPath psqlPath
+exec(open("local_settings.py").read()) ### for codePath dataPath psqlPath
 import psycopg2
 import os
 import sys
@@ -16,7 +16,7 @@ builds database of game state.
 ### create dataBase
 dbfile = open("zzzhelp_builddb.sql", "w")
 dbfile.write("""
-DROP DATABASE nba_tracking;
+DROP DATABASE IF EXISTS nba_tracking;
 CREATE DATABASE nba_tracking;
 --\c nba_tracking
 """)
@@ -35,10 +35,10 @@ try:
     cur.execute("CREATE TABLE coordinates(row INTEGER PRIMARY KEY CHECK (row=CURRVAL('pk_test')) DEFAULT NEXTVAL('pk_test'), x FLOAT NOT NULL DEFAULT 0, y FLOAT NOT NULL DEFAULT 0, z FLOAT DEFAULT NULL, vx FLOAT NOT NULL DEFAULT 0, vy FLOAT NOT NULL DEFAULT 0, vz FLOAT DEFAULT NULL );")
     cur.execute("ALTER SEQUENCE pk_test OWNED BY coordinates.row;")
     con.commit()
-except psycopg2.DatabaseError, e:
+except psycopg2.DatabaseError as e:
     if con:
         con.rollback()
-    print 'Error %s' % e
+    print('Error %s' % e)
     #sys.exit(1)
 
 ### populate table
@@ -57,11 +57,11 @@ try:
         f = iter_file.IteratorFile(("{}\t{}\t{}\t{}\t{}\t{}".format(x[0], x[1], x[2], x[3], x[4], x[5]) for x in coordinates))
         cur.copy_from(f, 'coordinates', columns=('x', 'y', 'z', 'vx', 'vy', 'vz'))
         coordinates = []
-        con.commit()
-except psycopg2.DatabaseError, e:
+    con.commit()
+except psycopg2.DatabaseError as e:
     if con:
         con.rollback()
-    print 'Error %s' % e
+    print('Error %s' % e)
 
 finally:
     if con:
@@ -79,10 +79,10 @@ if True:
             #row = cur.fetchone()
             #if row == None: break
         coordinates = np.array(cur.fetchall())
-    except psycopg2.DatabaseError, e:
+    except psycopg2.DatabaseError as e:
         if con:
             con.rollback()
-        print 'Error %s' % e
+        print('Error %s' % e)
     coordinates[0]
     print(db_size())
 

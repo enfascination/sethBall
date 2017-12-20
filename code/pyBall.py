@@ -89,10 +89,10 @@ def ball_phase_space_generate_db(n):
             #row = cur.fetchone()
             #if row == None: break
         coordinates = np.array(cur.fetchall())
-    except psycopg2.DatabaseError, e:
+    except psycopg2.DatabaseError as e:
         if con:
             con.rollback()
-        print 'Error %s' % e
+        print('Error %s' % e)
     return( coordinates )
 
 def db_size():
@@ -107,8 +107,8 @@ def db_size():
         con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
         cur = con.cursor()
         cur.execute("SELECT COUNT(*) FROM coordinates")
-    except psycopg2.DatabaseError, e:
-        print 'Error %s' % e
+    except psycopg2.DatabaseError as e:
+        print('Error %s' % e)
     return( cur.fetchone()[0] )
 
 
@@ -135,7 +135,7 @@ def _get_json_str(file_name, gzipped=True):
     if not gzipped:
         json_file = open(file_name,'r')
     else:
-        json_file = gzip.open(file_name,'r')
+        json_file = gzip.open(file_name,'rt')
     return json_file.read().split('\n')
 
 def _add_velocity(trajectory):

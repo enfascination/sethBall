@@ -1,4 +1,4 @@
-execfile("local_settings.py") ### for codePath dataPath psqlPath
+exec(open("local_settings.py").read()) ### for codePath dataPath psqlPath
 import json
 import numpy as np
 import os
