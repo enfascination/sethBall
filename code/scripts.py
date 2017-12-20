@@ -2,11 +2,17 @@ import json
 import numpy as np
 import os
 import tqdm
+import matplotlib as plt
 from scipy.ndimage.filters import gaussian_filter as smooth
 
 
 matplotlib.rcParams["mathtext.fontset"] = "stix"
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
+
+if False:
+    import pyBall
+    from local_settings import dataPath
+    coordinates = pyBall.ball_phase_space_generate(dataPath)
 
 
 #----------------------------------- 1d Marginals 

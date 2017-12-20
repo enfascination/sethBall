@@ -4,6 +4,7 @@ import numpy as np
 import os
 import tqdm
 import matplotlib
+import gzip
 
 matplotlib.rcParams["mathtext.fontset"] = "stix"
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
@@ -47,20 +48,22 @@ def ball_data_load(file_name):
         #Check to make sure that the file is a json file
         if _check_json(file_name):
             json_strs = _get_json_str(file_name)
-            #This loop goes over all the contiguous trajectories in the game
-            for json_str in json_strs:
-                try:
-                    moments = json.loads(json_str)['moments']
-                    if len(moments)>5:
-                        #this is where the data is projected into the coordinate list
-                        trajectory = np.array(list(map(_coordinate_projection,moments))).T
-                        #adds the velocity, acceleration, etc
-                        trajectory = _add_velocity(trajectory)
-                        for point in trajectory[1:].T:
-                            if _validate_point(point):
-                                coordinates.append(point)
-                except ValueError:
-                    pass
+        elif _check_jsongz(file_name):
+            json_strs = _get_json_str(file_name, gzipped=True)
+        #This loop goes over all the contiguous trajectories in the game
+        for json_str in json_strs:
+            try:
+                moments = json.loads(json_str)['moments']
+                if len(moments)>5:
+                    #this is where the data is projected into the coordinate list
+                    trajectory = np.array(list(map(_coordinate_projection,moments))).T
+                    #adds the velocity, acceleration, etc
+                    trajectory = _add_velocity(trajectory)
+                    for point in trajectory[1:].T:
+                        if _validate_point(point):
+                            coordinates.append(point)
+            except ValueError:
+                pass
     except IndexError:
         pass
     return np.array(coordinates)
@@ -80,8 +83,15 @@ def _check_json(file_name):
     #checks to see if the extension of a file is .json
     return file_name[-4:]=='json'
 
-def _get_json_str(file_name):
-    json_file = open(file_name,'r')
+def _check_jsongz(file_name):
+    #checks to see if the extension of a file is .json
+    return file_name[-7:]=='json.gz'
+
+def _get_json_str(file_name, gzipped=True):
+    if not gzipped:
+        json_file = open(file_name,'r')
+    else:
+        json_file = gzip.open(file_name,'r')
     return json_file.read().split('\n')
 
 def _add_velocity(trajectory):
