@@ -101,7 +101,7 @@ def estimatePosessingTeam(teams, eventOriginator, prevPossessingTeam, eventType)
 def gameClockAnnotations(injsonfilename, outcsvfilename):
     eventDist = {}
     # year is year as int, date is data as YYYYMMDD string, season_phase is text of what part of the season, iseason_phase is integer 1-4 representation of that, game_id is a unique ID for each NBA game across seasons, home and visit are the 3 digit codes for each team.  string uids for games usually put home team first. period is the period of the game, clock_game is game wide clock time, descending (gives unique time for whole game), clock_period is each period's clock, score_* is the current score for each time at that point in the game, event_team lists the event that occurred that prompted an entry in the play-by-play data. possible events are substittuions, violation, timeout, turnovers, fouls, rebound, period end and beginning, freethrows,  jump ball, shots.
-   header = ["year", "date", "season_phase", "iseason_phase", "game_id", "home", "visit", "period", "clock_game", "clock_period", "event", "score_h", "score_v", "event_team"]
+    header = ["year", "date", "season_phase", "iseason_phase", "game_id", "home", "visit", "period", "clock_game", "clock_period", "event", "score_h", "score_v", "event_team"]
     # https://stackoverflow.com/questions/39450065/python-3-read-write-compressed-json-objects-from-to-gzip-file
     with io.TextIOWrapper(gzip.open(injsonfilename, 'r')) as fin:        # 4. gzip
         reader = csv.reader(fin)
