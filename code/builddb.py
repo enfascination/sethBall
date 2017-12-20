@@ -1,12 +1,13 @@
-execfile("local_settings.py")
+execfile("local_settings.py") ### for codePath dataPath psqlPath
 import psycopg2
 import os
 import sys
 import tqdm
 from subprocess import call
 import pyBall
-from pyBall import ball_data_load
+from pyBall import ball_data_load, db_size
 import numpy as np
+from iter_file import iter_file
 
 """
 builds database of game state.
@@ -30,7 +31,7 @@ try:
     con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
     cur = con.cursor()
     ### autoinsert primary key https://stackoverflow.com/questions/3905378/manual-inserts-on-a-postgres-table-with-a-primary-key-sequence
-    cur.execute("CREATE SEQUENCE pk_test, INCREMENT 1, MINVALUE 1, MAXVALUE 9223372036854775807, START 1, CACHE 1;")
+    cur.execute("CREATE SEQUENCE pk_test INCREMENT 1 MINVALUE 1 MAXVALUE 9223372036854775807 START 1 CACHE 1;")
     cur.execute("CREATE TABLE coordinates(row INTEGER PRIMARY KEY CHECK (row=CURRVAL('pk_test')) DEFAULT NEXTVAL('pk_test'), x FLOAT NOT NULL DEFAULT 0, y FLOAT NOT NULL DEFAULT 0, z FLOAT DEFAULT NULL, vx FLOAT NOT NULL DEFAULT 0, vy FLOAT NOT NULL DEFAULT 0, vz FLOAT DEFAULT NULL );")
     cur.execute("ALTER SEQUENCE pk_test OWNED BY coordinates.row;")
     con.commit()
@@ -42,14 +43,20 @@ except psycopg2.DatabaseError, e:
 
 ### populate table
 try:
+    coordinates = []
     file_names = os.listdir(dataPath)
     cur = con.cursor()
     for i, file_name in enumerate(tqdm.tqdm(file_names)):
         game_data = ball_data_load(dataPath + file_name)
         if len(game_data) > 0:
             for point in game_data:
-                #cur.execute("INSERT INTO coordinates VALUES (%s, %s, %s, %s, %s, %s, %s)"%tuple([i,] + list(point)))
-                cur.execute("INSERT INTO coordinates (x,y,z,vx,vy,vz) VALUES (%s, %s, %s, %s, %s, %s)"%tuple(point))
+                #cur.execute("INSERT INTO coordinates (x,y,z,vx,vy,vz) VALUES (%s, %s, %s, %s, %s, %s)"%tuple(point))
+                coordinates.append(point)
+        #https://stackoverflow.com/questions/8134602/psycopg2-insert-multiple-rows-with-one-query
+        ### add games/files one at a time
+        f = iter_file.IteratorFile(("{}\t{}\t{}\t{}\t{}\t{}".format(x[0], x[1], x[2], x[3], x[4], x[5]) for x in coordinates))
+        cur.copy_from(f, 'coordinates', columns=('x', 'y', 'z', 'vx', 'vy', 'vz'))
+        coordinates = []
         con.commit()
 except psycopg2.DatabaseError, e:
     if con:
@@ -77,4 +84,5 @@ if True:
             con.rollback()
         print 'Error %s' % e
     coordinates[0]
+    print(db_size())
 
