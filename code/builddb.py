@@ -1,4 +1,4 @@
-exec(open("local_settings.py").read()) ### for codePath dataPath psqlPath
+exec(open("../local_settings.py").read()) ### for codePath dataPath psqlPath
 import psycopg2
 import os
 import sys

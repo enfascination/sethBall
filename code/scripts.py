@@ -1,9 +1,10 @@
-exec(open("local_settings.py").read()) ### for codePath dataPath psqlPath
+exec(open("../local_settings.py").read()) ### for codePath dataPath psqlPath
 import json
 import numpy as np
 import os
 import tqdm
 import matplotlib
+import matplotlib.pyplot as plt
 from scipy.ndimage.filters import gaussian_filter as smooth
 import pyBall
 
@@ -12,8 +13,9 @@ matplotlib.rcParams['font.family'] = 'STIXGeneral'
 
 if True:
     #coordinates = pyBall.ball_phase_space_generate(dataPath)
-    print( pyBall.db_size() )
+    #print( pyBall.db_size() )
     coordinates_new = pyBall.ball_phase_space_generate_db(1000) ### enter number of observations desired
+    coordinates = coordinates_new
 
 
 #----------------------------------- 1d Marginals 
