@@ -1,10 +1,13 @@
+import sys
+sys.path.append("..")
+from local_settings import *
 import requests
 import pandas as pd
 import numpy as np
 import json
 
 # uncomment this line for inline use with ipython on mac
-%matplotlib osx
+#%matplotlib osx
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -13,6 +16,7 @@ from nba_py import player
 from nba_py import team
 from scipy.spatial.distance import euclidean
 from sklearn.neighbors import KernelDensity
+from dataloader import data_loader
 
 import sys
 # sys.path.insert(0, './code')
@@ -21,7 +25,9 @@ import sys
 # import 'code/utils'
 
 
-df = data_loader('./data/0021500502.json')
+#df = data_loader('./data/0021500502.json')
+df = data_loader(dataPath+'nbagame0021400077.json.gz')
+#df = data_loader('~/Desktop/0021500281.json')
 
 
 court = plt.imread("./code/fullcourt.png")
