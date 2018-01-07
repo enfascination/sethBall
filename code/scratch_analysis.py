@@ -1,5 +1,5 @@
 import sys
-sys.path.append("..")
+sys.path.extend((".",".."))
 from local_settings import *
 import requests
 import pandas as pd
@@ -16,10 +16,10 @@ from nba_py import player
 from nba_py import team
 from scipy.spatial.distance import euclidean
 from sklearn.neighbors import KernelDensity
-from dataloader import data_loader, plot_distribution
+from dataloader import data_loader, plot_distribution, add_possesion
 
 # local imports
-import sys
+import pyBall
 from mutual_information import * 
 # sys.path.insert(0, './code')
 # import dataloader
@@ -28,6 +28,7 @@ from mutual_information import *
 
 
 df = data_loader(dataPath+'nbagame0021400375.json.gz', year=2014)
+df2 = pyBall.ball_data_load(dataPath+'nbagame0021400375.json.gz')
 
 
 court = plt.imread("./fullcourt.png")

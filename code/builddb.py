@@ -1,4 +1,7 @@
-exec(open("../local_settings.py").read()) ### for codePath dataPath psqlPath
+import sys
+sys.path.extend((".",".."))
+from local_settings import * ### for codePath dataPath psqlPath
+
 import psycopg2
 import os
 import sys
@@ -14,7 +17,7 @@ builds database of game state.
 """
 
 ### create dataBase
-dbfile = open("zzzhelp_builddb.sql", "w")
+dbfile = open(codePath+"zzzhelp_builddb.sql", "w")
 dbfile.write("""
 DROP DATABASE IF EXISTS nba_tracking;
 CREATE DATABASE nba_tracking;

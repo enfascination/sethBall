@@ -65,7 +65,7 @@ def data_loader(file_name, year):
     # Append them to the dataframe
     df["player_name"] = df.player_id.map(lambda x: id_dict[x][0])
     df["player_jersey"] = df.player_id.map(lambda x: id_dict[x][1])
-    #df = add_possesion(df)
+    df = add_possesion(df)
 
     if df.shape[0] == 0:
         print("PROBLEM $ASDJDDDD: This dataframe is empty")

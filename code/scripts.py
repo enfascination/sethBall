@@ -1,4 +1,7 @@
-exec(open("../local_settings.py").read()) ### for codePath dataPath psqlPath
+import sys
+sys.path.extend((".",".."))
+from local_settings import *
+
 import json
 import numpy as np
 import os
