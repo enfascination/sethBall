@@ -18,13 +18,6 @@ from nba_py import team
 
 
 
-def dataloader():
-    # Column labels
-    headers = ["team_id", "player_id", "x_loc", "y_loc", \
-           "radius", "moment", "game_clock", "shot_clock"]
-    data = json.load('../data/')
-
-
 def travel_dist(player_locations):
     """
     Returns the distance traveled by a player based on his locations
@@ -134,3 +127,4 @@ def draw_court(ax=None, color='black', lw=2, outer_lines=False):
         ax.add_patch(element)
 
     return ax
+

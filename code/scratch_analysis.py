@@ -16,25 +16,26 @@ from nba_py import player
 from nba_py import team
 from scipy.spatial.distance import euclidean
 from sklearn.neighbors import KernelDensity
-from dataloader import data_loader
+from dataloader import data_loader, plot_distribution
 
+# local imports
 import sys
+from mutual_information import * 
 # sys.path.insert(0, './code')
 # import dataloader
 # import utils
 # import 'code/utils'
 
 
-#df = data_loader('./data/0021500502.json')
-df = data_loader(dataPath+'nbagame0021400077.json.gz')
-#df = data_loader('~/Desktop/0021500281.json')
+df = data_loader(dataPath+'nbagame0021400375.json.gz', year=2014)
 
 
-court = plt.imread("./code/fullcourt.png")
+court = plt.imread("./fullcourt.png")
 
 
 # create player masks
-sa_mask = (df.team_id == 1610612759) & (df.quarter == 1)
+sa_mask = (df.team_id == 1610612759) & (df.quarter == 1) ### Spurs
+#sa_mask = (df.team_id == 1610612757) & (df.quarter == 1) ### "Portland Trail Blazers"
 sa_spurs = df[sa_mask]
 
 ## Test block for one player

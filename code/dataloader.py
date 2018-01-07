@@ -2,6 +2,7 @@ import requests
 import pandas as pd
 import numpy as np
 import json
+import gzip
 
 # uncomment this line for inline use with ipython on mac
 #%matplotlib osx
@@ -19,20 +20,18 @@ from nba_py import player
 from nba_py import team
 from scipy.spatial.distance import euclidean
 
+import pyBall
 
-def data_loader(file_name):
-    data = pd.read_json(file_name)
+def data_loader(file_name, year):
+    ### different years of tracking data have different formats
+    if year == 2014:
+        (home, visitor, moments) = data_loader_2014in(file_name)
+    elif year == 2015:
+        (home, visitor, moments) = data_loader_2015in(file_name)
+    else:
+        print("PROBLEM ASDFJASDJFJEEEEE: bad year")
 
-    home = {}
-    moments = []
-    visitor = {}
     player_moments = []
-
-    for key in data["events"].keys():
-        home.update(data["events"][key]["home"])
-        visitor.update(data["events"][key]["visitor"])
-        moments.append(data["events"][key]["moments"])
-
     headers = ["team_id", "player_id", "x_loc", "y_loc",
                "radius", "moment", "quarter", "game_clock", "shot_clock"]
 
@@ -67,9 +66,46 @@ def data_loader(file_name):
     df["player_name"] = df.player_id.map(lambda x: id_dict[x][0])
     df["player_jersey"] = df.player_id.map(lambda x: id_dict[x][1])
     #df = add_possesion(df)
+
+    if df.shape[0] == 0:
+        print("PROBLEM $ASDJDDDD: This dataframe is empty")
     return df
 
+def data_loader_2014in(file_name):
+    if pyBall._check_json(file_name):
+        data = pd.read_json(file_name, lines=True) # this lines argument might only be for 2014 and not 2015 data
+    elif pyBall._check_jsongz(file_name):
+        #data = pd.read_json(file_name, lines=True)
+        data = pd.read_json(gzip.open(file_name, 'rt'), lines=True)
 
+    home = {}
+    moments = []
+    visitor = {}
+
+    # 2014 format i think has integer event keys within data keys?
+    for key in data["gamedate"].keys():
+        #print(key)
+        #print(data[key].keys())
+        home.update(data["home"][key])
+        visitor.update(data["visitor"][key])
+        moments.append(data["moments"][key])
+
+    return((home, visitor, moments))
+
+def data_loader_2015in(file_name):
+    data = pd.read_json(file_name)
+
+    home = {}
+    moments = []
+    visitor = {}
+
+    # 2015 format i think has data keys within integer event keys?
+    for key in data["events"].keys():
+        home.update(data["events"][key]["home"])
+        visitor.update(data["events"][key]["visitor"])
+        moments.append(data["events"][key]["moments"])
+
+    return((home, visitor, moments))
 
 
 def add_possesion(df):
@@ -196,9 +232,10 @@ def plot_movement_vs_kawhi(df, player_input):
         plt.savefig('./tex/figs/'+ player_input + str(quarter))
 
 
-def plot_distribution(df, player_name="Kawhi Leonard", color=1):
+def plot_distribution(df, player_name, color=1):
     #### PLOT THE DISTRIBUTION FOR LEONARD
     leonard = df[df.player_name == player_name]
+    print(leonard.head())
     if color == 1:
         cmap=plt.cm.YlOrRd_r
     else:
