@@ -9,6 +9,7 @@ build:
 
 analysis_bruno:
 	echo "This part of the pipeline includes scratch_analysis.py, mutual_information.py, utils.py, dataloader.py"
+	echo "This is currently busted because add_possessions need to be made to work"
 	python ./code/scratch_analysis.py
 
 analysis:
