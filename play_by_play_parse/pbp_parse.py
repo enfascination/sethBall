@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+import sys
+sys.path.extend((".",".."))
+from local_settings import *
 
 """
 This code parses NBA play-by-play data from one github account into a csv.  It currently only lists freethrow events.
@@ -27,8 +30,10 @@ def detectEventType(description):
     o = "ERROR"
     if re.search("Substitution", d):
         o = "substitution"
-    elif d == "Start Period" or d == "End Period":
-        o = "game_edge"
+    elif d == "Start Period":
+        o = "game_begin"
+    elif d == "End Period":
+        o = "game_end"
     elif re.search("Ruling", d):
         o = "ruling"
     elif re.search("Ejection", d):
@@ -163,7 +168,9 @@ def gameClockAnnotations(injsonfilename, outcsvfilename):
                 #print(json.dumps(game_details, sort_keys=True, indent=4, separators=(',', ': ')))
                 #print(json.dumps(events, sort_keys=True, indent=4, separators=(',', ': ')))
                 #print(ogrow)
-    #print( eventDist )
+    print( eventDist )
 
-gameClockAnnotations( "data/pbp_2014.csv.gz", "data/nba_2014_freethrows.csv")
-gameClockAnnotations( "data/pbp_2015.csv.gz", "data/nba_2015_freethrows.csv")
+#gameClockAnnotations( pbpPath+"data/pbp_2014.csv.gz", pbpPath+"data/nba_2014_freethrows.csv")
+#gameClockAnnotations( pbpPath+"data/pbp_2015.csv.gz", pbpPath+"data/nba_2015_freethrows.csv")
+gameClockAnnotations( pbpPath+"data/pbp_2014.csv.gz", pbpPath+"data/nba_2014_events.csv")
+gameClockAnnotations( pbpPath+"data/pbp_2015.csv.gz", pbpPath+"data/nba_2015_events.csv")
