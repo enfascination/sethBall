@@ -51,6 +51,8 @@ def ball_data_load(file_name):
             json_strs = _get_json_str(file_name)
         elif _check_jsongz(file_name):
             json_strs = _get_json_str(file_name, gzipped=True)
+        else:
+            json_strs = _get_json_str(file_name, gzipped=True)
         #This loop goes over all the contiguous trajectories in the game
         for json_str in json_strs:
             try:
