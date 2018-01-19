@@ -47,6 +47,8 @@ try:
     file_names = os.listdir(dataPath)
     cur = con.cursor()
     for i, file_name in enumerate(tqdm.tqdm(file_names)):
+        if file_name[0:7] != "nbagame": continue
+        print(file_name )
         game_data = ball_data_load(dataPath + file_name)
         if len(game_data) > 0:
             for point in game_data:
