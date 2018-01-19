@@ -131,7 +131,7 @@ def _check_jsongz(file_name):
     #checks to see if the extension of a file is .json
     return file_name[-7:]=='json.gz'
 
-def _get_json_str(file_name, gzipped=True):
+def _get_json_str(file_name, gzipped=False):
     if not gzipped:
         json_file = open(file_name,'r')
     else:
