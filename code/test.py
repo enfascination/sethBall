@@ -57,10 +57,9 @@ class TestCoordTestData(unittest.TestCase):
         self.assertTrue(len(coordinates[-1]) == 6)
         self.assertTrue( all([ x == 6 for x in map(len, coordinates)] ))
 
-    #def test_all_position_data_load(self):
-        #coordinates = pyBall.all_position_data_load( self.file_name )
-        #print(len(coordinates))
-        #self.assertTrue(len(coordinates) == 201747)
+    def test_all_position_data_load(self):
+        coordinates = pyBall.all_position_data_load( self.file_name )
+        self.assertTrue(len(coordinates) == 201747)
 
 if __name__ == '__main__':
     unittest.main()

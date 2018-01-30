@@ -97,11 +97,11 @@ def all_position_data_load(file_name):
                 moments = json.loads(json_str)['moments']
                 if len(moments)>5:
                     #this is where the data is projected into the coordinate list
-                    trajectory = np.array(list(map(_coordinate_projection_ball,moments))).T
-                    #trajectory = np.array(list(map(_coordinate_projection_entity,moments,ientity=0))).T
-                    for point in trajectory[1:].T:
-                        if _validate_position(point):
-                            coordinates.append(point)
+                    #trajectory = np.array(list(map(_coordinate_projection_ball,moments))).T
+                    trajectory = np.array(list(map(_coordinate_projection_entity,moments,ientity=0))).T
+                    for point in trajectory[:].T:
+                        if _validate_position(point[3:9]):
+                            coordinates.append(point[3:9])
             except ValueError:
                 pass
     except IndexError:
