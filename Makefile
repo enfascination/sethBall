@@ -27,5 +27,6 @@ find_possessions:
 test:
 	echo "Right now: test development process of attempt to generalize from ball to all entities"
 	#make build
+	#python -m unittest -v code.test.TestCoordTestData.test_coordinates
 	python -m unittest
 

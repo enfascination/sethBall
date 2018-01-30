@@ -6,6 +6,7 @@ import tqdm
 import matplotlib
 import gzip
 import psycopg2
+from functools import partial
 
 matplotlib.rcParams["mathtext.fontset"] = "stix"
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
@@ -57,12 +58,15 @@ def ball_data_load(file_name):
                 moments = json.loads(json_str)['moments']
                 if len(moments)>5:
                     #this is where the data is projected into the coordinate list
-                    trajectory = np.array(list(map(_coordinate_projection_ball,moments))).T
+                    #trajectory = np.array(list(map(_coordinate_projection_ball,moments))).T
+                    mapfunc = partial(_coordinate_projection_entity,ientity=0)
+                    trajectory = np.array(list(map(mapfunc,moments))).T
                     #adds the velocity, acceleration, etc
-                    trajectory = _add_velocity(trajectory)
-                    for point in trajectory[1:].T:
-                        if _validate_point(point):
-                            coordinates.append(point)
+                    trajectory = _add_velocity(trajectory[2:6])
+                    for point in trajectory[:].T:
+                        #print(point)
+                        if _validate_point(point[1:]):
+                            coordinates.append(point[1:])
             except ValueError:
                 pass
     except IndexError:
@@ -97,11 +101,12 @@ def all_position_data_load(file_name):
                 moments = json.loads(json_str)['moments']
                 if len(moments)>5:
                     #this is where the data is projected into the coordinate list
-                    #trajectory = np.array(list(map(_coordinate_projection_ball,moments))).T
-                    trajectory = np.array(list(map(_coordinate_projection_entity,moments,ientity=0))).T
-                    for point in trajectory[:].T:
-                        if _validate_position(point[3:9]):
-                            coordinates.append(point[3:9])
+                    for itraj in range(11):
+                        mapfunc = partial(_coordinate_projection_entity,ientity=itraj)
+                        trajectory = np.array(list(map(mapfunc,moments))).T
+                        for point in trajectory[:].T:
+                            if _validate_position(point[3:6]):
+                                coordinates.append(point)
             except ValueError:
                 pass
     except IndexError:
@@ -157,14 +162,13 @@ def _validate_point(point):
 
 def _validate_position(point):
     """Validates a point by checking to make sure it is in the boundary of the court."""
-    return ((point[0]<=94)&(point[0]>=0)&(point[1]<=50)&(point[1]>=0))
+    return ((point[0]<=94)&(point[0]>=0)&(point[1]<=50)&(point[1]>=0)&(point[2]>=0))
 
 def _validate_velocity(point):
     """Validates a point by checking
     #that the speeds are not too large (which is a sign of an artifact coming from
     #the finite difference method)"""
-    return ((point[2]>0)&
-            (np.abs(point[3])<40)&(np.abs(point[4])<40)&(np.abs(point[5])<40))
+    return ((np.abs(point[3])<40)&(np.abs(point[4])<40)&(np.abs(point[5])<40))
 
 def _coordinate_projection_ball(moment):
     #Projects the (t,x,y,z) coordinates of the ball from the moment structure
