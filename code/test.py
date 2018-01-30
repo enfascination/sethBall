@@ -32,6 +32,10 @@ class TestCoordTestData(unittest.TestCase):
         json_strs = pyBall._get_json_str(file_name, gzipped=True)
         self.file_name = file_name
         self.json_strs = json_strs
+        ### now make finer subobjects
+        json_str = json_strs[10]
+        moments = json.loads(json_str)['moments']
+        self.trajectory = np.array(list(map(pyBall._coordinate_projection_ball,moments))).T
 
     def test_coordinates(self):
         json_strs = self.json_strs
@@ -97,13 +101,23 @@ class TestCoordTestData(unittest.TestCase):
 
     def test_ball_data_load(self):
         coordinates = pyBall.ball_data_load( self.file_name )
-        self.assertTrue(len(coordinates) == 173856, len(coordinates))
+        #vvv former test is wrong, because of convoluaiotn-based time filtering : 
+        #self.assertTrue(len(coordinates) == 173856, len(coordinates))
+        self.assertTrue(len(coordinates) == 173763, len(coordinates))
         self.assertTrue(len(coordinates[-1]) == 6)
         self.assertTrue( all([ x == 6 for x in map(len, coordinates)] ))
 
     def test_all_position_data_load(self):
         coordinates = pyBall.all_position_data_load( self.file_name )
         #self.assertTrue(len(coordinates) == 201747, len(coordinates))
+
+    def test_clean_time(self):
+        trajectory1 = pyBall._clean_time(self.trajectory)
+        trajectory1 = pyBall._add_velocity(trajectory1)
+        trajectory2 = pyBall._add_velocity_old(self.trajectory)
+        self.assertTrue( trajectory1.shape[0] == trajectory2.shape[0], "%s != %s" % (trajectory1.shape , trajectory2.shape ) )
+        self.assertTrue( trajectory1.shape[1] == trajectory2.shape[1], "%s != %s" % (trajectory1.shape , trajectory2.shape ) )
+        self.assertTrue( np.array_equal(trajectory1 , trajectory2), "%s != %s" % (str(trajectory1[0]) , str(trajectory2[0]) ) )
 
 if __name__ == '__main__':
     unittest.main()

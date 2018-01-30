@@ -62,6 +62,7 @@ def ball_data_load(file_name):
                     mapfunc = partial(_coordinate_projection_entity,ientity=0)
                     trajectory = np.array(list(map(mapfunc,moments))).T
                     #adds the velocity, acceleration, etc
+                    trajectory = _clean_time(trajectory, itime=2)
                     trajectory = _add_velocity(trajectory[2:6])
                     for point in trajectory[:].T:
                         #print(point)
@@ -104,6 +105,7 @@ def all_position_data_load(file_name):
                     for itraj in range(11):
                         mapfunc = partial(_coordinate_projection_entity,ientity=itraj)
                         trajectory = np.array(list(map(mapfunc,moments))).T
+                        trajectory = _clean_time(trajectory, itime=2)
                         for point in trajectory[:].T:
                             if _validate_position(point[3:6]):
                                 coordinates.append(point)
@@ -201,6 +203,17 @@ def _get_json_str(file_name, gzipped=True):
         json_file = gzip.open(file_name,'rt')
     return json_file.read().split('\n')
 
+def _clean_time(trajectory, itime=0):
+    """ given a 2d array and the its time index, 
+    gets rid of all instances of time freezing: 
+        just one measurement per time step, exce
+        pt possibly the very last two"""
+    dt = np.convolve(trajectory[itime],[-1,1],'valid')
+    #valid indices are those in which the clock is running
+    valid_idx = dt!=0
+    valid_idx = np.append(valid_idx, True ) # keep last value
+    return(trajectory[:,valid_idx])
+
 def _add_velocity(trajectory):
     dt = np.convolve(trajectory[0],[-1,0,1],'valid')
     #valid indices are those in which the clock is running
@@ -219,3 +232,30 @@ def _add_velocity(trajectory):
     vy = dy/dt
     vz = dz/dt
     return np.array([t,x,y,z,vx,vy,vz])
+
+def _add_velocity_old(trajectory):
+    dt = np.convolve(trajectory[0],[-1,0,1],'valid')
+    #valid indices are those in which the clock is running
+    valid_idx = dt!=0
+    dt = dt[valid_idx]
+    #smooth the coordinates
+    t = np.convolve(trajectory[0],[.25,.5,.25],'valid')[valid_idx]
+    x = np.convolve(trajectory[1],[.25,.5,.25],'valid')[valid_idx]
+    y = np.convolve(trajectory[2],[.25,.5,.25],'valid')[valid_idx]
+    z = np.convolve(trajectory[3],[.25,.5,.25],'valid')[valid_idx]
+    #central difference method for the velocity, quadratic error
+    dx = np.convolve(trajectory[1],[-1,0,1],'valid')[valid_idx]
+    dy = np.convolve(trajectory[2],[-1,0,1],'valid')[valid_idx]
+    dz = np.convolve(trajectory[3],[-1,0,1],'valid')[valid_idx]
+    vx = dx/dt
+    vy = dy/dt
+    vz = dz/dt
+    return np.array([t,x,y,z,vx,vy,vz])
+
+if __name__ == '__main__':
+    file_name = "/Users/sfrey/Desktop/projecto/research_projects/nba_tracking/sampledata/nbagame0021400377.json.gz"
+    json_strs = _get_json_str(file_name, gzipped=True)
+    coordinates = all_position_data_load( file_name )
+    print(coordinates[0:5])
+    print()
+    print(ball_data_load( file_name )[0:5])
