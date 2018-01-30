@@ -27,8 +27,8 @@ class TestStringMethods(unittest.TestCase):
 class TestCoordTestData(unittest.TestCase):
 
     def setUp(self):
-        file_name = "/Users/sfrey/Desktop/projecto/research_projects/nba_tracking/sampledata/nbagame0021400377.json.gz"
-        json_strs = pyBall._get_json_str(file_name, gzipped=True)
+        self.file_name = "/Users/sfrey/Desktop/projecto/research_projects/nba_tracking/sampledata/nbagame0021400377.json.gz"
+        json_strs = pyBall._get_json_str(self.file_name, gzipped=True)
         self.json_strs = json_strs
 
     def test_coordinates(self):
@@ -46,9 +46,21 @@ class TestCoordTestData(unittest.TestCase):
                             coordinates.append(point)
             except ValueError:
                 pass
-        print(len(coordinates) )
         self.assertTrue(len(coordinates) == 173317)
         self.assertTrue(len(coordinates[-1]) == 6)
+        self.assertTrue(len(trajectory) == 7)
+        self.assertTrue( all([ x == 6 for x in map(len, coordinates)] ))
+
+    def test_ball_data_load(self):
+        coordinates = pyBall.ball_data_load( self.file_name )
+        self.assertTrue(len(coordinates) == 173317)
+        self.assertTrue(len(coordinates[-1]) == 6)
+        self.assertTrue( all([ x == 6 for x in map(len, coordinates)] ))
+
+    #def test_all_position_data_load(self):
+        #coordinates = pyBall.all_position_data_load( self.file_name )
+        #print(len(coordinates))
+        #self.assertTrue(len(coordinates) == 201747)
 
 if __name__ == '__main__':
     unittest.main()

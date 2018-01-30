@@ -153,15 +153,15 @@ def db_size():
 
 def _validate_point(point):
     """Validates a point by checking to make sure its position and velocity are valid"""
-    return (_validate_position(point) & _validate_v_and_a(point))
+    return (_validate_position(point) & _validate_velocity(point))
 
 def _validate_position(point):
     """Validates a point by checking to make sure it is in the boundary of the court."""
     return ((point[0]<=94)&(point[0]>=0)&(point[1]<=50)&(point[1]>=0))
 
-def _validate_v_and_a(point):
-    """Validates a point by checking 
-    #that the speeds and acceleration are not too large (which is a sign of an artifact coming from
+def _validate_velocity(point):
+    """Validates a point by checking
+    #that the speeds are not too large (which is a sign of an artifact coming from
     #the finite difference method)"""
     return ((point[2]>0)&
             (np.abs(point[3])<40)&(np.abs(point[4])<40)&(np.abs(point[5])<40))
