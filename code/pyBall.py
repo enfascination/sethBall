@@ -30,8 +30,8 @@ def ball_phase_space_generate(directory_name):
     return np.array(coordinates)
 
 def ball_data_load(file_name):
-    """Loads the phase-space coordinates, (x,y,z,vx,vy,vz,...), for all 
-    the frames of a game.
+    """Loads the phase-space coordinates of the ball, 
+    (x,y,z,vx,vy,vz,...), for all the frames of a game.
     
     INPUT
     file_name       The location of the file being read
@@ -57,11 +57,50 @@ def ball_data_load(file_name):
                 moments = json.loads(json_str)['moments']
                 if len(moments)>5:
                     #this is where the data is projected into the coordinate list
-                    trajectory = np.array(list(map(_coordinate_projection,moments))).T
+                    trajectory = np.array(list(map(_coordinate_projection_ball,moments))).T
                     #adds the velocity, acceleration, etc
                     trajectory = _add_velocity(trajectory)
                     for point in trajectory[1:].T:
                         if _validate_point(point):
+                            coordinates.append(point)
+            except ValueError:
+                pass
+    except IndexError:
+        pass
+    return np.array(coordinates)
+
+def all_position_data_load(file_name):
+    """Loads the phase-space coordinates, (x,y,z,...), for all 
+    the frames of a game, for all entities (players and ball).
+    
+    INPUT
+    file_name       The location of the file being read
+    
+    OUTPUT
+    coordinates     An array of arrays. The top layer is the contiguous trajectories.
+                    The next layer is the array of phase space coordinates of the ball 
+                    along that contiguous trajectory. 
+    """
+    coordinates = []
+    #this is the prjector that picks out the time stamp and spatial coordinates of
+    # the ball from the moment data
+    
+    try:
+        #Check to make sure that the file is a json file
+        if _check_json(file_name):
+            json_strs = _get_json_str(file_name)
+        elif _check_jsongz(file_name):
+            json_strs = _get_json_str(file_name, gzipped=True)
+        #This loop goes over all the contiguous trajectories in the game
+        for json_str in json_strs:
+            try:
+                moments = json.loads(json_str)['moments']
+                if len(moments)>5:
+                    #this is where the data is projected into the coordinate list
+                    trajectory = np.array(list(map(_coordinate_projection_ball,moments))).T
+                    #trajectory = np.array(list(map(_coordinate_projection_entity,moments,ientity=0))).T
+                    for point in trajectory[1:].T:
+                        if _validate_position(point):
                             coordinates.append(point)
             except ValueError:
                 pass
@@ -113,15 +152,35 @@ def db_size():
 
 
 def _validate_point(point):
-    #Validates a point by checking to make sure it is in the boundary of the court,
-    #and that the speeds are not too large (which is a sign of an artifact coming from
-    #the finite difference method)
-    return ((point[0]<=94)&(point[0]>=0)&(point[1]<=50)&(point[1]>=0)&(point[2]>0)&
+    """Validates a point by checking to make sure its position and velocity are valid"""
+    return (_validate_position(point) & _validate_v_and_a(point))
+
+def _validate_position(point):
+    """Validates a point by checking to make sure it is in the boundary of the court."""
+    return ((point[0]<=94)&(point[0]>=0)&(point[1]<=50)&(point[1]>=0))
+
+def _validate_v_and_a(point):
+    """Validates a point by checking 
+    #that the speeds and acceleration are not too large (which is a sign of an artifact coming from
+    #the finite difference method)"""
+    return ((point[2]>0)&
             (np.abs(point[3])<40)&(np.abs(point[4])<40)&(np.abs(point[5])<40))
 
-def _coordinate_projection(moment):
+def _coordinate_projection_ball(moment):
     #Projects the (t,x,y,z) coordinates of the ball from the moment structure
+    # here is the structure of each moment[5][x] 
+    # (each entity at the given instant of the given event):
+    #          ["team_id", "player_id", "x_loc", "y_loc",
+    #          "radius", "moment", "quarter", "game_clock", "shot_clock"]
     return np.array([moment[2],moment[5][0][2],moment[5][0][3],moment[5][0][4]])
+
+def _coordinate_projection_entity(moment, ientity):
+    #Projects the (t,team,entity,x,y,z) coordinates of the ith entity from the moment structure
+    # here is the structure of each moment[5][x] 
+    # (each entity at the given instant of the given event):
+    #          ["team_id", "player_id", "x_loc", "y_loc",
+    #          "radius", "moment", "quarter", "game_clock", "shot_clock"]
+    return np.array([moment[0],moment[1],moment[2],moment[5][ientity][2],moment[5][ientity][3],moment[5][ientity][4]])
 
 def _check_json(file_name):
     #checks to see if the extension of a file is .json
