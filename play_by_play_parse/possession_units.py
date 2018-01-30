@@ -34,17 +34,44 @@ def possessFromPbP(incsvfilename):
     pbpEdges = {} #game possession edges
     with open(incsvfilename, 'r') as fin:
         reader = csv.DictReader(fin)
-        tposs = 2880
+        #tposs = '2880'
+        tposs = None
         for i, l in enumerate(reader):
+            ### scrolling one by one through games, this recognized when I just hit a new one.
             if l['game_id'] not in pbpEdges:
                 pbpEdges[ l['game_id'] ] = {}
                 pbp[ l['game_id'] ] = []
-            if l['event'] in ("game_begin", "game_end", "turnover", "violation", "ejection", "foul", 'freethrow', 'rebound', "jump_ball", "shot_made", "shot_missed"):
+            ### assign control of the ball in this even, if possible
+            if l['event'] in ("jump_ball", "shot_made", "shot_missed", "turnover", "foul_offensive", "rebound", "free_throw", "shot_made", "shot_missed"):
+                l['control'] = l['event_team']
+            elif l['event'] in ("steal", "foul_shooting"):
+                l['control'] = l['home'] if l['event_team'] == l['visit'] else l['visit']
+            elif l['event'] in ("game_begin", "game_end", "substitution", "ruling", "ejection", "violation", "technical", "foul", "foul_personal", "timeout"):
+                l['control'] = None
+            else:
+                l['control'] = None
+            #print(l['event'] )
+            #if l['clock_game'] == str(2880): print(l['event'])
+            ### these events mark the beginning of a new period of possession
+            if l['event'] in ("game_begin", "jump_ball", "steal", "rebound"):
                 tposs = l['clock_game']
-                pbpEdges[ l['game_id'] ][tposs] = []
-            pbpEdges[ l['game_id'] ][tposs] = pbpEdges[ l['game_id'] ].get(tposs,[]).append( l )
-            #pbpEdges.get(l['game_id'], {}).get(tposs, []).append( l )
+                pbpEdges[ l['game_id'] ][tposs] = {}
+                pbpEdges[ l['game_id'] ][tposs]['e'] = []
+                pbpEdges[ l['game_id'] ][tposs]['i'] = {k: l[k] for k in ("year", "date", "season_phase", "iseason_phase", "game_id", "home", "visit", "period")}
+            pbpEdges[ l['game_id'] ][tposs]['e'].append( l )
             pbp[ l['game_id'] ].append( l )
+            ### these events mark the end of a period of possession
+            if l['event'] in ("game_end", "turnover", "shot_made", "shot_missed", "free_throw", "foul_offensive"):
+                tposs = l['clock_game']
+                pbpEdges[ l['game_id'] ][tposs] = {}
+                pbpEdges[ l['game_id'] ][tposs]['e'] = []
+                pbpEdges[ l['game_id'] ][tposs]['i'] = {k: l[k] for k in ("year", "date", "season_phase", "iseason_phase", "game_id", "home", "visit", "period")}
+        reader = csv.DictReader(fin)
+        for i, l in enumerate(reader):
+            for g in l:
+                for p in g:
+                    controls = [e['control'] for e in p['e']]
+                    print(controls)
         print("keys are ", l.keys())
         print("got as high as ", i)
         print("num of games", len(pbpEdges.keys()))
@@ -52,41 +79,37 @@ def possessFromPbP(incsvfilename):
     return(pbpEdges)
 
 def testPossess(pbpEdges) :
-    gameData = {}
     print("games" + str(len(pbpEdges.keys())))
     for game, possess in pbpEdges.items():
+        poss_l = "None"
         poss = "None"
         #if not bool(possess): continue
         print(game)
-        print(possess)
-        gameData[game] = {k: possess[2880][k] for k in ("year", "date", "season_phase", "iseason_phase", "game_id", "home", "visit", "period")}
-        gameData[game]['control'] = {}
+        #print(sorted(possess.keys(), reverse=True))
+        nextPossTime = dict(zip(tuple(possess.keys())[:-1], tuple(possess.keys())[1:] ))
         for edgeTime, events in possess.items():
-            gameData[game]['control'][edgeTime] = poss
             for i, event in enumerate(events):
+                event['aa_poss'] = poss
                 if event['event'] in ('game_end', 'shot_made', 'shot_missed', 'rebound', 'turnover', 'jump_shot'):
                     if event['event_team'] != poss:
-                        print(events[i-1])
-                        print(events[i])
-                        print(events[i+1])
-                        print(events[i+2])
+                        print(events)
+                        print(possess[nextPossTime[edgeTime]])
                         print()
-                        break
+                        return()
                     else:
                         print('smthing else')
                 elif event['event'] in ('game_begin'):
                     if event['event_team'] != "":
-                        print(events[i-1])
-                        print(events[i])
-                        print(events[i+1])
-                        print(events[i+2])
+                        print(events)
+                        print(possess[nextPossTime[edgeTime]])
                         print()
-                        break
+                        print()
+                        return()
                     else:
                         print('smthing else')
                 else:
                     print('smthing else')
-    return(pbpEdges)
+    return()
 
 def writePossess(outcsvfilename, eventDist):
     #header = ["year", "date", "season_phase", "iseason_phase", "game_id", "home", "visit", "period", "clock_game", "clock_period", "event", "score_h", "score_v", "event_team", "possess"]
@@ -98,7 +121,6 @@ try:
     events = possessFromPbP( pbpPath + "data/nba_2014_events.csv")
     print("events " + str(len(events.keys())))
     edges = testPossess(events)
-    print("edges " + str(len(edges.keys())))
-    writePossess( pbpPath + "data/scratch.csv", edges)
+    #writePossess( pbpPath + "data/scratch.csv", edges)
 except (BrokenPipeError, IOError):
     pass
