@@ -60,13 +60,14 @@ def ball_data_load(file_name):
                     #this is where the data is projected into the coordinate list
                     #trajectory = np.array(list(map(_coordinate_projection_ball,moments))).T
                     mapfunc = partial(_coordinate_projection_entity,ientity=0)
-                    trajectory = np.array(list(map(mapfunc,moments))).T
+                    moments_valid = filter(lambda x: len(x[5])==11,moments)
+                    trajectory = np.array(list(map(mapfunc,moments_valid))).T
                     #adds the velocity, acceleration, etc
                     trajectory = _clean_time(trajectory, itime=2)
                     trajectory = _add_velocity(trajectory[2:6])
                     for point in trajectory[:].T:
                         #print(point)
-                        if _validate_point(point[1:]):
+                        if _validate_point(point[1:], ball=True):
                             coordinates.append(point[1:])
             except ValueError:
                 pass
@@ -75,7 +76,7 @@ def ball_data_load(file_name):
     return np.array(coordinates)
 
 def all_position_data_load(file_name):
-    """Loads the phase-space coordinates, (x,y,z,...), for all 
+    """Loads the phase-space coordinates, (gameid, playerid,t,x,y,z), for all 
     the frames of a game, for all entities (players and ball).
     
     INPUT
@@ -97,17 +98,40 @@ def all_position_data_load(file_name):
         elif _check_jsongz(file_name):
             json_strs = _get_json_str(file_name, gzipped=True)
         #This loop goes over all the contiguous trajectories in the game
+        t_end_last = 720
+        p_last = 1
         for json_str in json_strs:
             try:
                 moments = json.loads(json_str)['moments']
                 if len(moments)>5:
                     #this is where the data is projected into the coordinate list
+                    ### repeat this for each entity on the court
+                    ### filter out invalid moments
+                    moments_valid = list(filter(lambda x: 
+                            (len(x[5])==11) and #those without 11 entities on the court
+                            (x[2] != 720) and #those with t=720 
+                                              #(very very beginning of period, known to be buggy)
+                            ((x[2] < t_end_last) or (x[0] != p_last))
+                                              #those with event overlaps 
+                                              #(in the same period, and beginning before the last event ended)
+                        , moments))
+                    #moments_valid =  moments
+                    ### reset the overlap tracker (assumes events are temporally ordered)
+                    t_end_last = min([x[2] for x in moments_valid]) ## time that this event ended
+                    p_last = moments[0][0] ### period of this event 
+                                           ### (assumes that all events are within period)
+                                           ### (don't sweat this using moments instead of moments_valid)
                     for itraj in range(11):
+                        ### set up the coordinate project for this entity
+                        ### at this instant, time becomes something that counts up instead of down
                         mapfunc = partial(_coordinate_projection_entity,ientity=itraj)
-                        trajectory = np.array(list(map(mapfunc,moments))).T
+                        ### produce 2D array of all states over time
+                        trajectory = np.array(list(map(mapfunc,moments_valid))).T
+                        ### remove all instances of time freezing
                         trajectory = _clean_time(trajectory, itime=2)
                         for point in trajectory[:].T:
-                            if _validate_position(point[3:6]):
+                            ## validity of an entity position differs for ball and players
+                            if _validate_position(point[3:6], ball=(point[0] == -1)):
                                 coordinates.append(point)
             except ValueError:
                 pass
@@ -158,13 +182,16 @@ def db_size():
     return( cur.fetchone()[0] )
 
 
-def _validate_point(point):
+def _validate_point(point, ball=False):
     """Validates a point by checking to make sure its position and velocity are valid"""
-    return (_validate_position(point) & _validate_velocity(point))
+    return (_validate_position(point, ball=ball) & _validate_velocity(point))
 
-def _validate_position(point):
+def _validate_position(point, ball=False):
     """Validates a point by checking to make sure it is in the boundary of the court."""
-    return ((point[0]<=94)&(point[0]>=0)&(point[1]<=50)&(point[1]>=0)&(point[2]>=0))
+    if ball:
+        return ((point[0]<=94)&(point[0]>=0)&(point[1]<=50)&(point[1]>=0)&(point[2]>0))
+    else:
+        return ((point[0]<=94)&(point[0]>=0)&(point[1]<=50)&(point[1]>=0)&(point[2]>=0))
 
 def _validate_velocity(point):
     """Validates a point by checking
@@ -178,7 +205,11 @@ def _coordinate_projection_ball(moment):
     # (each entity at the given instant of the given event):
     #          ["team_id", "player_id", "x_loc", "y_loc",
     #          "radius", "moment", "quarter", "game_clock", "shot_clock"]
-    return np.array([moment[2],moment[5][0][2],moment[5][0][3],moment[5][0][4]])
+    if False : ### this is always true: ball, when present, is always the first entity
+        assert(moment[5][0][0] == -1 ) ### teamid of the ball is -1
+        assert(moment[5][0][1] == -1 ) ### playerid of the ball is -1
+    t = (720 - moment[2]) + (moment[0] - 1) * 12 * 60
+    return np.array([t,moment[5][0][2],moment[5][0][3],moment[5][0][4]])
 
 def _coordinate_projection_entity(moment, ientity):
     #Projects the (t,team,entity,x,y,z) coordinates of the ith entity from the moment structure
@@ -186,7 +217,12 @@ def _coordinate_projection_entity(moment, ientity):
     # (each entity at the given instant of the given event):
     #          ["team_id", "player_id", "x_loc", "y_loc",
     #          "radius", "moment", "quarter", "game_clock", "shot_clock"]
-    return np.array([moment[0],moment[1],moment[2],moment[5][ientity][2],moment[5][ientity][3],moment[5][ientity][4]])
+    if False and ientity == 0: ### this is always true: ball, when present, is always the first entity
+        assert moment[5][0][0] == -1, "%s"%(str(moment),)  ### teamid of the ball is -1
+        assert moment[5][0][1] == -1, "%s"%(str(moment),)  ### playerid of the ball is -1
+    t = (720 - moment[2]) + (moment[0] - 1) * 12 * 60
+    return np.array([moment[5][ientity][0],moment[5][ientity][1],t,
+                     moment[5][ientity][2],moment[5][ientity][3],moment[5][ientity][4]])
 
 def _check_json(file_name):
     #checks to see if the extension of a file is .json
@@ -253,9 +289,15 @@ def _add_velocity_old(trajectory):
     return np.array([t,x,y,z,vx,vy,vz])
 
 if __name__ == '__main__':
+    #np.set_printoptions(formatter={'float_kind':'{:f}'.format}, floatmode="maxprec")
+    np.set_printoptions(formatter={'float_kind':'{:f}'.format})
     file_name = "/Users/sfrey/Desktop/projecto/research_projects/nba_tracking/sampledata/nbagame0021400377.json.gz"
     json_strs = _get_json_str(file_name, gzipped=True)
     coordinates = all_position_data_load( file_name )
+    coordinates_old = ball_data_load( file_name )
+    print(coordinates_old[0:5])
     print(coordinates[0:5])
     print()
-    print(ball_data_load( file_name )[0:5])
+    print()
+    print(type(coordinates_old[0:5]))
+    print(type(coordinates[0:5]))
