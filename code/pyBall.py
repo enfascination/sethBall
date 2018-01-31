@@ -1,12 +1,18 @@
+import sys
+sys.path.extend((".",".."))
+from local_settings import * ### for codePath dataPath psqlPath
+
 #---------------------------------------------------LIBRARIES
 import json
 import numpy as np
+import pandas as pd
 import os
 import tqdm
 import matplotlib
 import gzip
 import psycopg2
 from functools import partial
+import datetime
 
 matplotlib.rcParams["mathtext.fontset"] = "stix"
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
@@ -99,6 +105,15 @@ def all_position_data_load(file_name):
             json_strs = _get_json_str(file_name)
         elif _check_jsongz(file_name):
             json_strs = _get_json_str(file_name, gzipped=True)
+        # first get game-scale descriptives for later use
+        event1 = json.loads(json_strs[0])
+        gamedata = {}
+        gamedata['gamedate'] = datetime.datetime.strptime(event1["gamedate"], "%Y-%m-%d")
+        gamedata['gameid'] = event1['gameid']
+        gamedata['home'] = event1['home']['abbreviation']
+        gamedata['homeid'] = event1['home']['teamid']
+        gamedata['visitor'] = event1['visitor']['abbreviation']
+        gamedata['visitorid'] = event1['visitor']['teamid']
         #This loop goes over all the contiguous trajectories in the game
         t_end_last = 720
         p_last = 1
@@ -137,9 +152,17 @@ def all_position_data_load(file_name):
                                 coordinates.append(point)
             except ValueError:
                 pass
+        coordinates = np.array(coordinates)
+        headers = ("teamid", "playerid", "t", "x", "y", "z")
+        df = pd.DataFrame(coordinates, columns=headers)
+        df = df.assign(gameid = gamedata["gameid"])
+        df = df.assign(gamedate = gamedata["gamedate"])
+        #TODO assign team to proper entity
+        #TODO assign binary in/out of possession flag to each row
+        df = df.assign(period = (df[['t']] // 720) + 1)
     except IndexError:
         pass
-    return np.array(coordinates)
+    return df
 
 def ball_phase_space_generate_db(n):
     """Extracts all the points in phase space of the ball from 
