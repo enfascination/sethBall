@@ -106,6 +106,10 @@ class TestCoordTestData(unittest.TestCase):
         #self.assertTrue(len(coordinates) == 173763, len(coordinates))
         self.assertTrue(len(coordinates[-1]) == 6)
         self.assertTrue( all([ x == 6 for x in map(len, coordinates)] ))
+        ### test refactoring of ball loader
+        c1 = pyBall.ball_data_load( self.file_name )
+        c2 = pyBall.ball_data_load_old( self.file_name )
+        self.assertTrue( np.array_equal( c1[0:5], c2[0:5]), "%s != %s" % (str(c1.shape) , str(c2.shape) ) )
 
     def test_all_position_data_load(self):
         coordinates = pyBall.all_position_data_load( self.file_name )

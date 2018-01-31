@@ -36,53 +36,6 @@ def ball_phase_space_generate(directory_name):
                 coordinates.append(point)
     return np.array(coordinates)
 
-def ball_data_load(file_name):
-    """Loads the phase-space coordinates of the ball, 
-    (x,y,z,vx,vy,vz,...), for all the frames of a game.
-    
-    INPUT
-    file_name       The location of the file being read
-    
-    OUTPUT
-    coordinates     An array of arrays. The top layer is the contiguous trajectories.
-                    The next layer is the array of phase space coordinates of the ball 
-                    along that contiguous trajectory. 
-    """
-    coordinates = []
-    #this is the prjector that picks out the time stamp and spatial coordinates of
-    # the ball from the moment data
-    
-    try:
-        #Check to make sure that the file is a json file
-        if _check_json(file_name):
-            json_strs = _get_json_str(file_name)
-        elif _check_jsongz(file_name):
-            json_strs = _get_json_str(file_name, gzipped=True)
-        else:
-            json_strs = _get_json_str(file_name)
-        #This loop goes over all the contiguous trajectories in the game
-        for json_str in json_strs:
-            try:
-                moments = json.loads(json_str)['moments']
-                if len(moments)>5:
-                    #this is where the data is projected into the coordinate list
-                    #trajectory = np.array(list(map(_coordinate_projection_ball,moments))).T
-                    mapfunc = partial(_coordinate_projection_entity,ientity=0)
-                    moments_valid = filter(lambda x: len(x[5])==11,moments)
-                    trajectory = np.array(list(map(mapfunc,moments_valid))).T
-                    #adds the velocity, acceleration, etc
-                    trajectory = _clean_time(trajectory, itime=2)
-                    trajectory = _add_velocity(trajectory[2:6])
-                    for point in trajectory[:].T:
-                        #print(point)
-                        if _validate_point(point[1:], ball=True):
-                            coordinates.append(point[1:])
-            except ValueError:
-                pass
-    except IndexError:
-        pass
-    return np.array(coordinates)
-
 def all_position_data_load(file_name):
     """Loads the phase-space coordinates, (gameid, playerid,t,x,y,z), for all 
     the frames of a game, for all entities (players and ball).
@@ -163,6 +116,61 @@ def all_position_data_load(file_name):
     except IndexError:
         pass
     return df
+
+def ball_data_load(file_name):
+    coordinates = all_position_data_load( file_name ) ### load full object with all entities
+    coordinates = coordinates.query("playerid == -1") ### pick out ball entitities
+    coord = _add_velocity( np.array(coordinates.loc[:,("t","x","y","z")].T  )).T ### add velocities
+    coord = coord[:,1:7] ### cut timestamps (move this line down 1 if i decdie I want them)
+    coord = np.array(list(filter(lambda x: _validate_velocity(x), coord)))   ### filter out invalid velocities
+    return(coord)
+
+def ball_data_load_old(file_name):
+    """Loads the phase-space coordinates of the ball, 
+    (x,y,z,vx,vy,vz,...), for all the frames of a game.
+    
+    INPUT
+    file_name       The location of the file being read
+    
+    OUTPUT
+    coordinates     An array of arrays. The top layer is the contiguous trajectories.
+                    The next layer is the array of phase space coordinates of the ball 
+                    along that contiguous trajectory. 
+    """
+    coordinates = []
+    #this is the prjector that picks out the time stamp and spatial coordinates of
+    # the ball from the moment data
+    
+    try:
+        #Check to make sure that the file is a json file
+        if _check_json(file_name):
+            json_strs = _get_json_str(file_name)
+        elif _check_jsongz(file_name):
+            json_strs = _get_json_str(file_name, gzipped=True)
+        else:
+            json_strs = _get_json_str(file_name)
+        #This loop goes over all the contiguous trajectories in the game
+        for json_str in json_strs:
+            try:
+                moments = json.loads(json_str)['moments']
+                if len(moments)>5:
+                    #this is where the data is projected into the coordinate list
+                    #trajectory = np.array(list(map(_coordinate_projection_ball,moments))).T
+                    mapfunc = partial(_coordinate_projection_entity,ientity=0)
+                    moments_valid = filter(lambda x: len(x[5])==11,moments)
+                    trajectory = np.array(list(map(mapfunc,moments_valid))).T
+                    #adds the velocity, acceleration, etc
+                    trajectory = _clean_time(trajectory, itime=2)
+                    trajectory = _add_velocity(trajectory[2:6])
+                    for point in trajectory[:].T:
+                        #print(point)
+                        if _validate_point(point[1:], ball=True):
+                            coordinates.append(point[1:])
+            except ValueError:
+                pass
+    except IndexError:
+        pass
+    return np.array(coordinates)
 
 def ball_phase_space_generate_db(n):
     """Extracts all the points in phase space of the ball from 
@@ -319,7 +327,8 @@ if __name__ == '__main__':
     file_name = dataPath + "nbagame0021400377.json.gz"
     json_strs = _get_json_str(file_name, gzipped=True)
     coordinates = all_position_data_load( file_name )
-    coordinates_old = ball_data_load( file_name )
+    coordinates_old = ball_data_load_old( file_name )
+    #coordinates_old = ball_data_load( file_name )
     print(coordinates_old[0:5])
     print(coordinates[0:5])
     print()
