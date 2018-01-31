@@ -24,4 +24,9 @@ find_possessions:
 	echo "Given output of pbp_parse, this breaks all games into the blocks in which one or another team was in control of the ball"
 	python ./play_by_play_parse/possession_units.py
 
+test:
+	echo "Right now: test development process of attempt to generalize from ball to all entities"
+	#make build
+	#python -m unittest -v code.test.TestCoordTestData.test_coordinates
+	python -m unittest
 

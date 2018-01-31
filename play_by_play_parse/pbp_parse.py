@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+import sys
+sys.path.extend((".",".."))
+from local_settings import *
 
 """
 This code parses NBA play-by-play data from one github account into a csv.  It currently only lists freethrow events.
@@ -27,22 +30,32 @@ def detectEventType(description):
     o = "ERROR"
     if re.search("Substitution", d):
         o = "substitution"
-    elif d == "Start Period" or d == "End Period":
-        o = "game_edge"
+    elif d == "Start Period":
+        o = "game_begin"
+    elif d == "End Period":
+        o = "game_end"
     elif re.search("Ruling", d):
         o = "ruling"
     elif re.search("Ejection", d):
         o = "ejection"
+    elif re.search("Steal", d): ### this should be before turnover because there are steals that produce explicit turnovers
+        o = "steal"
+    elif re.search("Turnover", d): ### this should be before violation because there are violations the produce explicit turnovers
+        o = "turnover"
     elif re.search("Violation", d):
         o = "violation"
     elif re.search("Technical", d):
         o = "technical"
+    elif re.search("Offensive", d):
+        o = "foul_offensive"
+    elif re.search("Shooting", d):
+        o = "foul_shooting"
+    elif re.search("Personal", d):
+        o = "foul_personal"
     elif re.search("Foul", d):
         o = "foul"
     elif re.search("Timeout", d):
         o = "timeout"
-    elif re.search("Turnover", d):
-        o = "turnover"
     elif re.search("Rebound", d):
         o = "rebound"
     elif re.search("Free Throw", d):
@@ -71,24 +84,24 @@ def parsePeriodClock(sClock):
     return( iClock)
 
 def estimatePosessingTeam(teams, eventOriginator, prevPossessingTeam, eventType):
-    possessingTeam = prevPossessingTeam
+    possessingTeam = None
     verb = ["gaining", "losing", "continuing"]
     if eventOriginator != "":
         nonEventOriginator = [t for t in teams if t != eventOriginator][0]
-        if eventType in ["free_throw", "shot_made", "shot_missed"]:
-            possessingTeam = eventOriginator
+        if eventType in ["free_throw", "shot_made", "shot_missed", "foul_offensive"]:
+            possessingTeam = True
             verb = "losing"
         elif eventType in ["rebound"]:
-            possessingTeam = eventOriginator
+            possessingTeam = True
             verb = "gaining"
-        elif eventType in ["turnover", "timeout"]:
-            possessingTeam = nonEventOriginator
+        elif eventType in ["turnover", "steal", "timeout", "foul_shooting"]:
+            possessingTeam = False
             verb = "gaining"
-        elif eventType in ["foul", "ruling", "game_edge", "technical", "violation", "ejection"]:
-            possessingTeam = prevPossessingTeam
+        elif eventType in ["foul", "foul_personal", "ruling", "game_edge", "technical", "violation", "ejection"]:
+            possessingTeam = None
             verb = "continuing"
         elif eventType in ["substitution"]:
-            possessingTeam = prevPossessingTeam
+            possessingTeam = None
             verb = "continuing"
         elif eventType in ["jump_shot"]:
             ### this depends on metadata: who in the original description text gainas possession?
@@ -148,11 +161,11 @@ def gameClockAnnotations(injsonfilename, outcsvfilename):
                     ogclock = opclock + (4-operiod)*12*60
                     oscoreh = e["home_score"]
                     oscorev = e["visitor_score"]
-                    opossessing = "FLAW"+estimatePosessingTeam(teamsabbrs, eventOriginator, "", oeventtype)
+                    opossessing = estimatePosessingTeam(teamsabbrs, eventOriginator, "", oeventtype)
                     oerow = [ogclock, opclock, oeventtype, oscoreh, oscorev, eventOriginator, opossessing]
-                    if oeventtype == "free_throw":
-                        writer.writerow(ogrow + oerow)
-                    #writer.writerow(ogrow + oerow)
+                    #if oeventtype == "free_throw":
+                        #writer.writerow(ogrow + oerow)
+                    writer.writerow(ogrow + oerow)
                 #print(len(l)) # = 6
                 #print(l)
                 #print(game_date)
@@ -163,7 +176,9 @@ def gameClockAnnotations(injsonfilename, outcsvfilename):
                 #print(json.dumps(game_details, sort_keys=True, indent=4, separators=(',', ': ')))
                 #print(json.dumps(events, sort_keys=True, indent=4, separators=(',', ': ')))
                 #print(ogrow)
-    #print( eventDist )
+    print( eventDist )
 
-gameClockAnnotations( "data/pbp_2014.csv.gz", "data/nba_2014_freethrows.csv")
-gameClockAnnotations( "data/pbp_2015.csv.gz", "data/nba_2015_freethrows.csv")
+#gameClockAnnotations( pbpPath+"data/pbp_2014.csv.gz", pbpPath+"data/nba_2014_freethrows.csv")
+#gameClockAnnotations( pbpPath+"data/pbp_2015.csv.gz", pbpPath+"data/nba_2015_freethrows.csv")
+gameClockAnnotations( pbpPath+"data/pbp_2014.csv.gz", pbpPath+"data/nba_2014_events.csv")
+gameClockAnnotations( pbpPath+"data/pbp_2015.csv.gz", pbpPath+"data/nba_2015_events.csv")
