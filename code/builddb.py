@@ -140,7 +140,7 @@ def ball_db():
         if con:
             con.close()
 
-hard_create_db()
+#hard_create_db()
 entity_db()
 #ball_db()
 
