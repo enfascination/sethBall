@@ -35,7 +35,7 @@ def create_entity_table(con):
     try:
         cur = con.cursor()
         cur.execute("DROP TABLE IF EXISTS gamestate")
-        cur.execute("CREATE TABLE gamestate(row SERIAL PRIMARY KEY, gamedate TIMESTAMP WITHOUT TIME ZONE, gameid INTEGER NOT NULL DEFAULT 0, teamid INTEGER NOT NULL DEFAULT 0, pid INTEGER NOT NULL DEFAULT 0, period SMALLINT NOT NULL DEFAULT 0, t FLOAT NOT NULL DEFAULT 0, x FLOAT NOT NULL DEFAULT 0, y FLOAT NOT NULL DEFAULT 0, z FLOAT DEFAULT NULL);")
+        cur.execute("CREATE TABLE gamestate(row SERIAL PRIMARY KEY, gamedate TIMESTAMP WITHOUT TIME ZONE, game VARCHAR(10) NOT NULL DEFAULT '', event INTEGER NOT NULL DEFAULT 0, teamid INTEGER NOT NULL DEFAULT 0, pid INTEGER NOT NULL DEFAULT 0, t FLOAT NOT NULL DEFAULT 0, x FLOAT NOT NULL DEFAULT 0, y FLOAT NOT NULL DEFAULT 0, z FLOAT DEFAULT NULL);")
         con.commit()
     except psycopg2.DatabaseError as e:
         if con:
@@ -43,40 +43,66 @@ def create_entity_table(con):
         print('Error %s' % e)
         #sys.exit(1)
 
-def populate_entity_table(con):
+def populate_entity_table_full(con, dryrun=False):
     ### populate table
     try:
         file_names = os.listdir(dataPath)
+        file_names_valid = []
         cur = con.cursor()
-        for i, file_name in enumerate(tqdm.tqdm(file_names)):
+        for i, file_name in enumerate(file_names):
+            #if i < 425: continue ### <<< temp code for continuing job mid-chug
             ### this prevents DS_Store files from crashing the thing, but this may 
             ###  interfere with processessing other seasons in different file/naming formats
             if file_name[0:7] != "nbagame": continue
             if os.stat(dataPath + file_name).st_size < 50: continue  ### empyt zip files
-            coordinates = all_position_data_load(dataPath + file_name)
-            #current order: ['teamid', 'playerid', 't', 'x', 'y', 'z', 'gameid', 'gamedate', 'period']
-            #https://stackoverflow.com/questions/8134602/psycopg2-insert-multiple-rows-with-one-query
-            ### add games/files one at a time
-            #print(list(x for x in np.array(coordinates.head())))
-            f = iter_file.IteratorFile(("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(x[7], int(x[6]), int(x[0]), int(x[1]), x[2], x[3], x[4], x[5])
-                                        for x in np.array(coordinates)))
-            cur.copy_from(f, 'gamestate', columns=('gamedate', 'gameid', 'teamid', 'pid', 't', 'x', 'y', 'z'))
-            coordinates = []
-        con.commit()
-        cur.execute("CREATE INDEX ON gamestate (gameid, pid, t)")
-        con.commit()
+            file_names_valid.append(file_name)
+        for i, file_name in enumerate(tqdm.tqdm(file_names_valid)):
+            populate_entity_table(dataPath + file_name, cur)
+            if dryrun:
+                cur.execute("CREATE UNIQUE INDEX ON gamestate (game, pid, t)")
+                con.rollback()
+        if not dryrun:
+            con.commit()
+            cur.execute("CREATE UNIQUE INDEX ON gamestate (game, pid, t)")
+            con.commit()
     except psycopg2.DatabaseError as e:
         if con:
             con.rollback()
-        print('Error %s' % e)
+        print( "Break at %s" % file_name )
+        print( 'Error %s' % e )
+        raise
 
+def populate_entity_table(file_name, cur):
+    coordinates = all_position_data_load(file_name)
+    #https://stackoverflow.com/questions/8134602/psycopg2-insert-multiple-rows-with-one-query
+    ### add games/files one at a time
+    #print(coordinates.shape)
+    #print([type(x) for x in coordinates.iloc[0,:]])
+    ### FROM Index(['eventid', 'playerid', 't', 'teamid', 'x', 'y', 'z', 'gameid', 'gamedate', 'period'],
+    ### TO schema:
+    ###  row SERIAL PRIMARY KEY, 
+    ###  gamedate TIMESTAMP WITHOUT TIME ZONE, 
+    ###  game VARCHAR(10) NOT NULL DEFAULT '', 
+    ###  event INTEGER NOT NULL DEFAULT 0, 
+    ###  teamid INTEGER NOT NULL DEFAULT 0, 
+    ###  pid INTEGER NOT NULL DEFAULT 0, 
+    ###  t FLOAT NOT NULL DEFAULT 0, 
+    ###  x FLOAT NOT NULL DEFAULT 0, 
+    ###  y FLOAT NOT NULL DEFAULT 0, 
+    ###  z FLOAT DEFAULT NULL);")
+    #current order: ['teamid', 'playerid', 'event', 't', 'x', 'y', 'z', 'game', 'gamedate', 'period']
+    outs = ("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(x['gamedate'], x['gameid'], int(x['eventid']), int(x['teamid']), int(x['playerid']), x['t'], x['x'], x['y'], x['z'])
+                                for x in coordinates.to_records())
+    f = iter_file.IteratorFile(outs)
+    cur.copy_from(f, 'gamestate', columns=('gamedate', 'game', 'event', 'teamid', 'pid', 't', 'x', 'y', 'z'))
 
-def entity_db():
+def entity_db(dryrun=False):
     con = None
     try:
         con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
         create_entity_table(con)
-        populate_entity_table(con)
+        #populate_entity_table_full(con)
+        populate_entity_table_full(con, dryrun=dryrun)
     except psycopg2.DatabaseError as e:
         if con:
             con.rollback()
@@ -140,8 +166,8 @@ def ball_db():
         if con:
             con.close()
 
-hard_create_db()
-entity_db()
+#hard_create_db()
+entity_db(dryrun=True)
 #ball_db()
 
 ### test queries
@@ -156,19 +182,48 @@ if __name__ == "__main__":
             #row = cur.fetchone()
             #if row == None: break
         coordinates = np.array(cur.fetchall())
-        print(coordinates[0])
-        print(coordinates.shape)
-        print()
-        cur.execute("SELECT gamedate, gameid, teamid, pid, x, y, z FROM gamestate LIMIT 1000")
+        if coordinates:
+            print(coordinates[0])
+            print(coordinates.shape)
+            print()
+        cur.execute("SELECT gamedate, game, event, teamid, pid, t, x, y, z FROM gamestate LIMIT 1000")
         coordinates = pd.DataFrame(cur.fetchall())
-        #cur.execute("CREATE UNIQUE INDEX ON gamestate (gameid, pid, t)")
+        #cur.execute("CREATE UNIQUE INDEX ON gamestate (game, pid, t)")
+        #cur.execute("CREATE INDEX ON gamestate (game, event, pid, t)")
         con.commit()
-        print(coordinates.iloc[0,:])
+        #print(coordinates.iloc[0,:])
         print(coordinates.shape)
+        if False:
+            file_name = "nbagame0021400164.json.gz"
+            file_name = "nbagame0021400044.json.gz"
+            file_name = "nbagame0021400314.json.gz"
+            file_name = "nbagame0021400308.json.gz"
+            populate_entity_table(dataPath +  file_name, cur)
+            coordinates = all_position_data_load(dataPath + file_name)
+            json_strs = _get_json_str(dataPath + file_name, gzipped=True)
+            headers = ("teamid", "playerid", "t", "x", "y", "z")
+            coord = pd.DataFrame(columns=headers)
+            ientity = 0
+            nevent = 96
+            nevent = 266
+            moments = json.loads(json_strs[nevent])['moments']
+            t_end_last = 720
+            p_last = moments[0][0]
+            moments_valid = list(filter(lambda x:
+                    (len(x[5])==11) and #those without 11 entities on the court
+                    (x[2] != 720) and #those with t=720 
+                                        #(very very beginning of period, known to be buggy)
+                    ((x[2] < t_end_last) or (x[0] != p_last))
+                                        #those with event overlaps 
+                                        #(in the same period, and beginning before the last event ended)
+                , moments))
+
+            trajectory = process_entity(moments_valid, headers, ientity)
+         #cur.execute("CREATE UNIQUE INDEX ON gamestate (game, event, pid, t)")
     except psycopg2.DatabaseError as e:
         if con:
             con.rollback()
         print('Error %s' % e)
-    coordinates[0]
+    #coordinates[0]
     print(db_size())
 
