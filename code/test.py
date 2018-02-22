@@ -123,5 +123,12 @@ class TestCoordTestData(unittest.TestCase):
         self.assertTrue( trajectory1.shape[1] == trajectory2.shape[1], "%s != %s" % (trajectory1.shape , trajectory2.shape ) )
         self.assertTrue( np.array_equal(trajectory1 , trajectory2), "%s != %s" % (str(trajectory1[0]) , str(trajectory2[0]) ) )
 
+    def test_db_draws(self):
+        c1 = pyBall.ball_phase_space_generate_db(1000)
+        c2 = pyBall.ball_phase_space_generate_db_old(1000)
+        ### deprecated if/because ball coordinates not loaded anymore
+        self.assertTrue( np.array_equal( c1, c2), "%s != %s" % (str(c1.shape) , str(c2.shape) ) )
+
+
 if __name__ == '__main__':
     unittest.main()

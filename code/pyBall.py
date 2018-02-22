@@ -36,7 +36,7 @@ def ball_phase_space_generate(directory_name):
                 coordinates.append(point)
     return np.array(coordinates)
 
-def all_position_data_load(file_name):
+def all_position_data_load(file_name, carefully=True):
     """Loads the phase-space coordinates, (gameid, playerid,t,x,y,z), for all 
     the frames of a game, for all entities (players and ball).
     
@@ -48,74 +48,134 @@ def all_position_data_load(file_name):
                     The next layer is the array of phase space coordinates of the ball 
                     along that contiguous trajectory. 
     """
-    coordinates = []
     #this is the prjector that picks out the time stamp and spatial coordinates of
     # the ball from the moment data
     
-    try:
-        #Check to make sure that the file is a json file
-        if _check_json(file_name):
-            json_strs = _get_json_str(file_name)
-        elif _check_jsongz(file_name):
-            json_strs = _get_json_str(file_name, gzipped=True)
-        # first get game-scale descriptives for later use
-        event1 = json.loads(json_strs[0])
-        gamedata = {}
-        gamedata['gamedate'] = datetime.datetime.strptime(event1["gamedate"], "%Y-%m-%d")
-        gamedata['gameid'] = event1['gameid']
-        gamedata['home'] = event1['home']['abbreviation']
-        gamedata['homeid'] = event1['home']['teamid']
-        gamedata['visitor'] = event1['visitor']['abbreviation']
-        gamedata['visitorid'] = event1['visitor']['teamid']
-        #This loop goes over all the contiguous trajectories in the game
-        t_end_last = 720
-        p_last = 1
-        for json_str in json_strs:
+    #Check to make sure that the file is a json file
+    if _check_json(file_name):
+        json_strs = _get_json_str(file_name)
+    elif _check_jsongz(file_name):
+        json_strs = _get_json_str(file_name, gzipped=True)
+    # first get game-scale descriptives for later use
+    event1 = json.loads(json_strs[0])
+    gamedata = {}
+    gamedata['gamedate'] = datetime.datetime.strptime(event1["gamedate"], "%Y-%m-%d")
+    gamedata['gameid'] = event1['gameid']
+    gamedata['home'] = event1['home']['abbreviation']
+    gamedata['homeid'] = event1['home']['teamid']
+    gamedata['visitor'] = event1['visitor']['abbreviation']
+    gamedata['visitorid'] = event1['visitor']['teamid']
+    # main coordinates object, enforcing uniquness
+    headers = ("teamid", "playerid", "t", "x", "y", "z")
+    coordinates = pd.DataFrame(columns=headers)
+    #This loop goes over all the contiguous trajectories in the game
+    t_end_last = 720
+    p_last = 1
+    for nevent, json_str in enumerate(json_strs):
+        ###vvv no data in this event
+        if len(json_str) == 0: continue
+        moments = json.loads(json_str)['moments']
+        #this is where the data is projected into the coordinate list
+        ### repeat this for each entity on the court
+        ### filter out invalid moments
+        moments_valid = list(filter(lambda x:
+                (len(x[5])==11) and #those without 11 entities on the court (by checking for for 11 event lists)
+                (x[2] != 720) and #those with t=720 
+                                    #(very very beginning of period, known to be buggy)
+                ((x[2] < t_end_last) or (x[0] != p_last))
+                                    #those with event overlaps 
+                                    #(in the same period, and beginning before the last event ended)
+            , moments))
+        #moments_valid =  moments
+        ###vvv no data in event after filtering
+        if len(moments_valid) < 2: continue
+        ### reset the overlap tracker (assumes events are temporally ordered)
+        t_end_last = min([x[2] for x in moments_valid]) ## time that this event ended
+        p_last = moments[0][0] ### period of this event 
+                                ### (assumes that all events are within period)
+                                ### (don't sweat this using moments instead of moments_valid)
+        trajectories = []
+        for ientity in range(11):
             try:
-                moments = json.loads(json_str)['moments']
-                if len(moments)>5:
-                    #this is where the data is projected into the coordinate list
-                    ### repeat this for each entity on the court
-                    ### filter out invalid moments
-                    moments_valid = list(filter(lambda x: 
-                            (len(x[5])==11) and #those without 11 entities on the court
-                            (x[2] != 720) and #those with t=720 
-                                              #(very very beginning of period, known to be buggy)
-                            ((x[2] < t_end_last) or (x[0] != p_last))
-                                              #those with event overlaps 
-                                              #(in the same period, and beginning before the last event ended)
-                        , moments))
-                    #moments_valid =  moments
-                    ### reset the overlap tracker (assumes events are temporally ordered)
-                    t_end_last = min([x[2] for x in moments_valid]) ## time that this event ended
-                    p_last = moments[0][0] ### period of this event 
-                                           ### (assumes that all events are within period)
-                                           ### (don't sweat this using moments instead of moments_valid)
-                    for itraj in range(11):
-                        ### set up the coordinate project for this entity
-                        ### at this instant, time becomes something that counts up instead of down
-                        mapfunc = partial(_coordinate_projection_entity,ientity=itraj)
-                        ### produce 2D array of all states over time
-                        trajectory = np.array(list(map(mapfunc,moments_valid))).T
-                        ### remove all instances of time freezing
-                        trajectory = _clean_time(trajectory, itime=2)
-                        for point in trajectory[:].T:
-                            ## validity of an entity position differs for ball and players
-                            if _validate_position(point[3:6], ball=(point[0] == -1)):
-                                coordinates.append(point)
-            except ValueError:
-                pass
-        coordinates = np.array(coordinates)
-        headers = ("teamid", "playerid", "t", "x", "y", "z")
-        df = pd.DataFrame(coordinates, columns=headers)
-        df = df.assign(gameid = gamedata["gameid"])
-        df = df.assign(gamedate = gamedata["gamedate"])
-        #TODO assign team to proper entity
-        #TODO assign binary in/out of possession flag to each row
-        df = df.assign(period = (df[['t']] // 720) + 1)
-    except IndexError:
-        pass
-    return df
+                trajectory = process_entity(moments_valid, headers, ientity)
+                if trajectory is None: break
+                trajectories.append( trajectory )
+            except:
+                print("%s %d %d"%(file_name, nevent, ientity))
+                raise
+        if True: ### a few filters with criteria for skipping an event
+            if len(trajectories) == 0 : continue #print("PASS SDJFGR: Skips for no data")
+            if any(i is None for i in trajectories): continue #print("PASS JFGDF: Skips for bad duplicates")
+            ### missing player check
+            ents = set()
+            _ = [ents.update(df.playerid) for df in trajectories]
+            if len(ents) != 11: 
+                #print("RARE PROBLEM HSDGJF: missing players: %s %d %d"%(file_name, nevent, len(ents)))
+                continue
+        ### now combine entity objects into event-scale team-scale data
+        trajectories = pd.concat( trajectories, ignore_index=True)
+        trajectories = trajectories.assign(eventid = nevent)
+        ### now check for index violations, an issue caused by entities crossing traj objects, 
+        ###    and wierd collisions like the ball being an amny places at once
+        if trajectories.duplicated(subset=['t', 'playerid']).any():
+            if trajectories.duplicated().any():
+                print("PROBLEM IOAJSDJ: Found and caught eliminable duplicates, entity %d" % (ientity))
+                trajectories = trajectories.drop_duplicates(subset=['playerid', 't'])
+            else:
+                continue
+        ### now eliminate time steps that lack 11 entities
+        timesBad = trajectories.groupby(['t']).count().query('playerid != 11').index
+        trajectories = trajectories[~trajectories.t.isin(timesBad)]
+        try:
+            trajectories.set_index(['playerid', 'eventid', 't'], verify_integrity=True)
+        except:
+            print("PROBLEM TKJFLL: Found duplicates unrecoverably, file %s, event %s" % (file_name, nevent))
+            raise
+        ### surviving all of the above, add event to the output game record
+        coordinates = coordinates.append( trajectories  )
+        try:
+            ### Sanity check that no events record the same entities in the same games at the same times 
+            ###    (and no events in coordinates twwice)
+            coordinates.set_index(['playerid', 'eventid', 't'], verify_integrity=True)
+        except ValueError as err:
+            print("PROBLEM LNM<DFJKH: Same eventid in multiple events? file %s, incl event %s" % (file_name, nevent))
+            print(err)
+            raise
+    #TODO assign team to proper entity
+    #TODO assign binary in/out of possession flag to each row
+    coordinates = coordinates.assign(gameid = gamedata["gameid"])
+    coordinates = coordinates.assign(gamedate = gamedata["gamedate"])
+    coordinates = coordinates.assign(period = (coordinates[['t']] // 720) + 1)
+    if coordinates.duplicated(subset=['t', 'playerid']).any():
+        if coordinates.duplicated(subset=['t','playerid','x','y','z']).any():
+            #print("PROBLEM :LDFJKS:HJ: Found and caught eliminable duplicates, entity %d" % (ientity))
+            coordinates = coordinates.drop_duplicates(subset=['playerid', 't'])
+        else:
+            print("PROBLEM YKFHJD: TOUGH SPOT Found ultimately recoverable but mildy worrisome and hopefully nonexistent duplicates in file %s, between events (or coordinates is empty? %d), dup count: %d" % (file_name, coordinates.shape[0], sum(coordinates.duplicated(subset=['t', 'playerid']))))
+            coordinates = coordinates.drop_duplicates(subset=['gameid', 't','playerid'])
+    try:
+        coordinates.set_index(['gameid', 'playerid', 't'], verify_integrity=True)
+    except:
+        print("PROBLEM :LKFJD: intractable duplicates file %s (or coordinates is empty? %d)" % (file_name, coordinates.shape[0]))
+        if coordinates.shape[0] > 0:
+            raise
+            #pass
+    return coordinates
+
+def process_entity(moments_valid, headers, ientity):
+    ### set up the coordinate project for this entity
+    ### at this instant, time becomes something that counts up instead of down
+    mapfunc = partial(_coordinate_projection_entity,ientity=ientity)
+    ### produce 2D array of all states over time
+    trajectory = np.array(list(map(mapfunc,moments_valid)))
+    ### remove all instances of time freezing
+    trajectory = _clean_time(trajectory.T, itime=2).T
+    ### filter out invalid entity states
+    trajectory = np.array(list(filter(lambda x: _validate_position(x[3:6], ball=(x[0] == -1)), trajectory)))
+    ### don't just filter out completely empty sequences, but also those that leave just one observation
+    if len(trajectory) < 2: return(None)
+    trajectory = pd.DataFrame(data=trajectory, columns=headers)
+    return(trajectory)
 
 def ball_data_load(file_name):
     coordinates = all_position_data_load( file_name ) ### load full object with all entities
@@ -173,6 +233,35 @@ def ball_data_load_old(file_name):
     return np.array(coordinates)
 
 def ball_phase_space_generate_db(n):
+    """Extracts all the points in phase space of the ball from 
+    the database built by running builddb.py
+    
+    INPUT
+    n  the number of observations to extract
+    
+    OUTPUT
+    coordinates  the coordinates object
+    """
+    coordinates = np.array([])
+    try:
+        con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
+        cur = con.cursor()
+        cur.execute("SELECT t, x, y, z FROM gamestate WHERE pid = -1 LIMIT %s"%(n,))
+        #https://pythonspot.com/python-database-postgresql/
+        #while True:
+            #row = cur.fetchone()
+            #if row == None: break
+        coordinates = np.array(cur.fetchall())
+    except psycopg2.DatabaseError as e:
+        if con:
+            con.rollback()
+        print('Error %s' % e)
+    coordinates = _add_velocity( coordinates.T ).T ### add velocities
+    coordinates = coordinates[:,1:7] ### cut timestamps (move this line down 1 if i decdie I want them)
+    coordinates = np.array(list(filter(lambda x: _validate_velocity(x), coordinates)))   ### filter out invalid velocities
+    return( coordinates )
+
+def ball_phase_space_generate_db_old(n):
     """Extracts all the points in phase space of the ball from 
     the database built by running builddb.py
     
@@ -273,7 +362,7 @@ def _get_json_str(file_name, gzipped=False):
     return json_file.read().split('\n')
 
 def _clean_time(trajectory, itime=0):
-    """ given a 2d array and the its time index, 
+    """ given a 2d array and the index of its time column,
     gets rid of all instances of time freezing: 
         just one measurement per time step, exce
         pt possibly the very last two"""
@@ -321,16 +410,22 @@ def _add_velocity_old(trajectory):
     vz = dz/dt
     return np.array([t,x,y,z,vx,vy,vz])
 
-if __name__ == '__main__':
+if __name__ == '__main__' and False:
     #np.set_printoptions(formatter={'float_kind':'{:f}'.format}, floatmode="maxprec")
     np.set_printoptions(formatter={'float_kind':'{:f}'.format})
     file_name = dataPath + "nbagame0021400377.json.gz"
     json_strs = _get_json_str(file_name, gzipped=True)
     coordinates = all_position_data_load( file_name )
     coordinates_old = ball_data_load_old( file_name )
+    if True:
+        con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
+        cur = con.cursor()
+        cur.execute("SELECT gamedate, game, event, teamid, pid, t, x, y, z FROM gamestate")
+        coorddb = pd.DataFrame(cur.fetchall())
     #coordinates_old = ball_data_load( file_name )
     print(coordinates_old[0:5])
     print(coordinates[0:5])
+    print(coorddb[0:5])
     print()
     print()
     print(type(coordinates_old[0:5]))
