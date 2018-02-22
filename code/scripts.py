@@ -2,25 +2,28 @@ import sys
 sys.path.extend((".",".."))
 from local_settings import *
 
-import json
-import numpy as np
 import os
-import tqdm
-import itertools
-import pickle
+import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from scipy.ndimage.filters import gaussian_filter as smooth
+import time
+import pickle
+import itertools
+from functools import reduce
+import json
+import tqdm
+
 import pyBall
 
-%matplotlib
+#%matplotlib
 matplotlib.rcParams["mathtext.fontset"] = "stix"
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
 
 if True:
     #coordinates = pyBall.ball_phase_space_generate(dataPath)
     #print( pyBall.db_size() )
-    coordinates_new = pyBall.ball_phase_space_generate_db(1000) ### enter number of observations desired
+    coordinates_new = pyBall.ball_phase_space_generate_db(10000) ### enter number of observations desired
     coordinates = coordinates_new
 
 
@@ -53,7 +56,7 @@ if False:
     ax6.set_title('Velocity Marginals')
 
 #----------------------------------- 2d Marginals
-h = map(list,np.ones([6,6]))
+h = list(map(list,np.ones([6,6])))
 for col in range(6):
     for row in range(col+1):
         if row == col:
@@ -99,13 +102,15 @@ for n in range(d):
         for idx in comb:
             coord_idx[idx] = True
         my_hist = np.histogramdd(coordinates[coord_idx].T,bins = (myBins,)*(n+1),normed=True)
-        dV = np.product(map(lambda x:np.mean(np.diff(x)),my_hist[1]))
+        dV = np.product(list(map(lambda x:np.mean(np.diff(x)),my_hist[1])))
         p = my_hist[0]*dV
         if len(comb) == 1:
             key = str(comb[0])
         else:
             key = reduce(lambda x,y:str(x)+str(y),comb)
         S[key]=-np.sum(np.multiply(p,np.log2(p+eps)))
-        print('  ' + key + ' : ' + str(S[key]))
+        #if n % 1000 == 0:
+            #print('  ' + key + ' : ' + str(S[key]))
     print('total time: ' + str(time.clock()-tstart) + 's')
     myBins = myBins/2
+
