@@ -74,63 +74,11 @@ def all_position_data_load(file_name, carefully=True):
     for nevent, json_str in enumerate(json_strs):
         ###vvv no data in this event
         if len(json_str) == 0: continue
-        moments = json.loads(json_str)['moments']
-        #this is where the data is projected into the coordinate list
-        ### repeat this for each entity on the court
-        ### filter out invalid moments
-        moments_valid = list(filter(lambda x:
-                (len(x[5])==11) and #those without 11 entities on the court (by checking for for 11 event lists)
-                (x[2] != 720) and #those with t=720 
-                                    #(very very beginning of period, known to be buggy)
-                ((x[2] < t_end_last) or (x[0] != p_last))
-                                    #those with event overlaps 
-                                    #(in the same period, and beginning before the last event ended)
-            , moments))
-        #moments_valid =  moments
-        ###vvv no data in event after filtering
-        if len(moments_valid) < 2: continue
-        ### reset the overlap tracker (assumes events are temporally ordered)
-        t_end_last = min([x[2] for x in moments_valid]) ## time that this event ended
-        p_last = moments[0][0] ### period of this event 
-                                ### (assumes that all events are within period)
-                                ### (don't sweat this using moments instead of moments_valid)
-        trajectories = []
-        for ientity in range(11):
-            try:
-                trajectory = process_entity(moments_valid, headers, ientity)
-                if trajectory is None: break
-                trajectories.append( trajectory )
-            except:
-                print("%s %d %d"%(file_name, nevent, ientity))
-                raise
-        if True: ### a few filters with criteria for skipping an event
-            if len(trajectories) == 0 : continue #print("PASS SDJFGR: Skips for no data")
-            if any(i is None for i in trajectories): continue #print("PASS JFGDF: Skips for bad duplicates")
-            ### missing player check
-            ents = set()
-            _ = [ents.update(df.playerid) for df in trajectories]
-            if len(ents) != 11: 
-                #print("RARE PROBLEM HSDGJF: missing players: %s %d %d"%(file_name, nevent, len(ents)))
-                continue
-        ### now combine entity objects into event-scale team-scale data
-        trajectories = pd.concat( trajectories, ignore_index=True)
-        trajectories = trajectories.assign(eventid = nevent)
-        ### now check for index violations, an issue caused by entities crossing traj objects, 
-        ###    and wierd collisions like the ball being an amny places at once
-        if trajectories.duplicated(subset=['t', 'playerid']).any():
-            if trajectories.duplicated().any():
-                print("PROBLEM IOAJSDJ: Found and caught eliminable duplicates, entity %d" % (ientity))
-                trajectories = trajectories.drop_duplicates(subset=['playerid', 't'])
-            else:
-                continue
-        ### now eliminate time steps that lack 11 entities
-        timesBad = trajectories.groupby(['t']).count().query('playerid != 11').index
-        trajectories = trajectories[~trajectories.t.isin(timesBad)]
-        try:
-            trajectories.set_index(['playerid', 'eventid', 't'], verify_integrity=True)
-        except:
-            print("PROBLEM TKJFLL: Found duplicates unrecoverably, file %s, event %s" % (file_name, nevent))
-            raise
+        trajectories, _t_end_last, _p_last = process_event(json_str, nevent, headers, file_name, t_end_last, p_last)
+        if trajectories is None: 
+            continue
+        else:
+            t_end_last, p_last = _t_end_last, _p_last
         ### surviving all of the above, add event to the output game record
         coordinates = coordinates.append( trajectories  )
         try:
@@ -141,11 +89,6 @@ def all_position_data_load(file_name, carefully=True):
             print("PROBLEM LNM<DFJKH: Same eventid in multiple events? file %s, incl event %s" % (file_name, nevent))
             print(err)
             raise
-    #TODO assign team to proper entity
-    #TODO assign binary in/out of possession flag to each row
-    coordinates = coordinates.assign(gameid = gamedata["gameid"])
-    coordinates = coordinates.assign(gamedate = gamedata["gamedate"])
-    coordinates = coordinates.assign(period = (coordinates[['t']] // 720) + 1)
     if coordinates.duplicated(subset=['t', 'playerid']).any():
         if coordinates.duplicated(subset=['t','playerid','x','y','z']).any():
             #print("PROBLEM :LDFJKS:HJ: Found and caught eliminable duplicates, entity %d" % (ientity))
@@ -153,6 +96,8 @@ def all_position_data_load(file_name, carefully=True):
         else:
             print("PROBLEM YKFHJD: TOUGH SPOT Found ultimately recoverable but mildy worrisome and hopefully nonexistent duplicates in file %s, between events (or coordinates is empty? %d), dup count: %d" % (file_name, coordinates.shape[0], sum(coordinates.duplicated(subset=['t', 'playerid']))))
             coordinates = coordinates.drop_duplicates(subset=['gameid', 't','playerid'])
+    ### make proper key
+    coordinates = coordinates.assign(gameid = gamedata["gameid"])
     try:
         coordinates.set_index(['gameid', 'playerid', 't'], verify_integrity=True)
     except:
@@ -160,7 +105,87 @@ def all_position_data_load(file_name, carefully=True):
         if coordinates.shape[0] > 0:
             raise
             #pass
-    return coordinates
+    ### now add misc columns
+    #TODO assign binary in/out of possession flag to each row
+    coordinates = coordinates.assign(gamedate = gamedata["gamedate"])
+    coordinates = coordinates.assign(period = (coordinates[['t']] // 720) + 1)
+    ### add discretizations
+    bl = coordinates
+    bl = bl.assign(bit2 = np.where(bl.x <= 94/2, 0, 1))
+    bl = bl.assign(bit3 = np.where(bl.y <= 50/2, 0, 1))
+    ### calculate ball within or beyond 3 point line.
+    ###  33pt line is a 23.75 foot part-circle on top of a 22x14.2 foot rectangle:
+    ###       22*tan(acos(22/23.75)) + 4 + 9/12 = 13.698
+    ###    first symmetrize down to quarter court
+    bl = bl.assign(xsym = np.where(bl.x <= 94/2, bl.x, (94-bl.x)))
+    bl = bl.assign(ysym = np.where(bl.y <= 50/2, bl.y, (50-bl.y)))
+    ###    then define state within arc-on-box 3pt line contour
+    bl = bl.assign(bit1 = np.where((bl.ysym > 3) & (bl.xsym <= 14.2), 1, 0))
+    bl = bl.assign(bit1 = np.where((bl.ysym > 3) & (bl.xsym > 14.2) & (bl.xsym < ((23.75**2 - (bl.ysym - 25)**2)**0.5 + 5.25)), 1, bl.bit1))
+    ###    construct eight court states;
+    bl = bl.assign(state = 2**0*bl.bit1 + 2**1*bl.bit2 + 2**2*bl.bit3)
+    coordinates = coordinates.drop(columns=['xsym', 'ysym', 'bit1', 'bit2', 'bit3'])
+    return(coordinates)
+
+def process_event(json_str, nevent, headers, file_name, t_end_last, p_last):
+    moments = json.loads(json_str)['moments']
+    #this is where the data is projected into the coordinate list
+    ### repeat this for each entity on the court
+    ### filter out invalid moments
+    moments_valid = list(filter(lambda x:
+            (len(x[5])==11) and #those without 11 entities on the court (by checking for for 11 event lists)
+            (x[2] != 720) and #those with t=720 
+                                #(very very beginning of period, known to be buggy)
+            ((x[2] < t_end_last) or (x[0] != p_last))
+                                #those with event overlaps 
+                                #(in the same period, and beginning before the last event ended)
+        , moments))
+    #moments_valid =  moments
+    ###vvv no data in event after filtering
+    if len(moments_valid) < 2: return((None,None,None))
+    ### reset the overlap tracker (assumes events are temporally ordered)
+    t_end_last = min([x[2] for x in moments_valid]) ## time that this event ended
+    p_last = moments[0][0] ### period of this event 
+                            ### (assumes that all events are within period)
+                            ### (don't sweat this using moments instead of moments_valid)
+    trajectories = []
+    for ientity in range(11):
+        try:
+            trajectory = process_entity(moments_valid, headers, ientity)
+            if trajectory is None: break
+            trajectories.append( trajectory )
+        except:
+            print("%s %d %d"%(file_name, nevent, ientity))
+            raise
+    if True: ### a few filters with criteria for skipping an event
+        if len(trajectories) == 0 : return((None,None,None)) #print("PASS SDJFGR: Skips for no data")
+        if any(i is None for i in trajectories): return((None,None,None)) #print("PASS JFGDF: Skips for bad duplicates")
+        ### missing player check
+        ents = set()
+        _ = [ents.update(df.playerid) for df in trajectories]
+        if len(ents) != 11:
+            #print("RARE PROBLEM HSDGJF: missing players: %s %d %d"%(file_name, nevent, len(ents)))
+            return((None,None,None))
+    ### now combine entity objects into event-scale team-scale data
+    trajectories = pd.concat( trajectories, ignore_index=True)
+    trajectories = trajectories.assign(eventid = nevent)
+    ### now check for index violations, an issue caused by entities crossing traj objects, 
+    ###    and wierd collisions like the ball being an amny places at once
+    if trajectories.duplicated(subset=['t', 'playerid']).any():
+        if trajectories.duplicated().any():
+            print("PROBLEM IOAJSDJ: Found and caught eliminable duplicates, entity %d" % (ientity))
+            trajectories = trajectories.drop_duplicates(subset=['playerid', 't'])
+        else:
+            return((None,None,None))
+    ### now eliminate time steps that lack 11 entities
+    timesBad = trajectories.groupby(['t']).count().query('playerid != 11').index
+    trajectories = trajectories[~trajectories.t.isin(timesBad)]
+    try:
+        trajectories.set_index(['playerid', 'eventid', 't'], verify_integrity=True)
+    except:
+        print("PROBLEM TKJFLL: Found duplicates unrecoverably, file %s, event %s" % (file_name, nevent))
+        raise
+    return(( trajectories, t_end_last, p_last ))
 
 def process_entity(moments_valid, headers, ientity):
     ### set up the coordinate project for this entity

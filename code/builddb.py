@@ -35,7 +35,7 @@ def create_entity_table(con):
     try:
         cur = con.cursor()
         cur.execute("DROP TABLE IF EXISTS gamestate")
-        cur.execute("CREATE TABLE gamestate(row SERIAL PRIMARY KEY, gamedate TIMESTAMP WITHOUT TIME ZONE, game VARCHAR(10) NOT NULL DEFAULT '', event INTEGER NOT NULL DEFAULT 0, teamid INTEGER NOT NULL DEFAULT 0, pid INTEGER NOT NULL DEFAULT 0, t FLOAT NOT NULL DEFAULT 0, x FLOAT NOT NULL DEFAULT 0, y FLOAT NOT NULL DEFAULT 0, z FLOAT DEFAULT NULL);")
+        cur.execute("CREATE TABLE gamestate(row SERIAL PRIMARY KEY, gamedate TIMESTAMP WITHOUT TIME ZONE, game VARCHAR(10) NOT NULL DEFAULT '', event INTEGER NOT NULL DEFAULT 0, teamid INTEGER NOT NULL DEFAULT 0, pid INTEGER NOT NULL DEFAULT 0, t FLOAT NOT NULL DEFAULT 0, x FLOAT NOT NULL DEFAULT 0, y FLOAT NOT NULL DEFAULT 0, z FLOAT DEFAULT NULL, event SMALLINT NOT NULL DEFAULT 0);")
         con.commit()
     except psycopg2.DatabaseError as e:
         if con:
@@ -43,21 +43,21 @@ def create_entity_table(con):
         print('Error %s' % e)
         #sys.exit(1)
 
-def populate_entity_table_full(con, dryrun=False):
+def populate_entity_table_full(con, ballonly=False, dryrun=False):
     ### populate table
+    file_names = os.listdir(dataPath)
+    file_names_valid = []
+    cur = con.cursor()
+    for i, file_name in enumerate(file_names):
+        #if i < 425: continue ### <<< temp code for continuing job mid-chug
+        ### this prevents DS_Store files from crashing the thing, but this may 
+        ###  interfere with processessing other seasons in different file/naming formats
+        if file_name[0:7] != "nbagame": continue
+        if os.stat(dataPath + file_name).st_size < 50: continue  ### empyt zip files
+        file_names_valid.append(file_name)
     try:
-        file_names = os.listdir(dataPath)
-        file_names_valid = []
-        cur = con.cursor()
-        for i, file_name in enumerate(file_names):
-            #if i < 425: continue ### <<< temp code for continuing job mid-chug
-            ### this prevents DS_Store files from crashing the thing, but this may 
-            ###  interfere with processessing other seasons in different file/naming formats
-            if file_name[0:7] != "nbagame": continue
-            if os.stat(dataPath + file_name).st_size < 50: continue  ### empyt zip files
-            file_names_valid.append(file_name)
         for i, file_name in enumerate(tqdm.tqdm(file_names_valid)):
-            populate_entity_table(dataPath + file_name, cur)
+            populate_entity_table(dataPath + file_name, cur, ballonly=ballonly)
             if dryrun:
                 cur.execute("CREATE UNIQUE INDEX ON gamestate (game, pid, t)")
                 con.rollback()
@@ -72,8 +72,15 @@ def populate_entity_table_full(con, dryrun=False):
         print( 'Error %s' % e )
         raise
 
-def populate_entity_table(file_name, cur):
-    coordinates = all_position_data_load(file_name)
+def populate_entity_table(file_name, cur, ballonly=False):
+    if not ballonly:
+        coordinates = all_position_data_load(file_name)
+    else:
+        coordinates = ball_data_load(file_name)
+        print(coordinates.columns)
+    ### in case there is cod etha tisn't performing discretization
+    if 'state' not in coordinates.columns:
+        coordinates = coordinates.assign(state=0)
     #https://stackoverflow.com/questions/8134602/psycopg2-insert-multiple-rows-with-one-query
     ### add games/files one at a time
     #print(coordinates.shape)
@@ -89,12 +96,13 @@ def populate_entity_table(file_name, cur):
     ###  t FLOAT NOT NULL DEFAULT 0, 
     ###  x FLOAT NOT NULL DEFAULT 0, 
     ###  y FLOAT NOT NULL DEFAULT 0, 
-    ###  z FLOAT DEFAULT NULL);")
-    #current order: ['teamid', 'playerid', 'event', 't', 'x', 'y', 'z', 'game', 'gamedate', 'period']
-    outs = ("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(x['gamedate'], x['gameid'], int(x['eventid']), int(x['teamid']), int(x['playerid']), x['t'], x['x'], x['y'], x['z'])
+    ###  z FLOAT DEFAULT NULL,
+    ### event SMALLINT NOT NULL DEFAULT 0);
+    #current order: ['teamid', 'playerid', 'event', 't', 'x', 'y', 'z', 'game', 'gamedate', 'period', 'state']
+    outs = ("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(x['gamedate'], x['gameid'], int(x['eventid']), int(x['teamid']), int(x['playerid']), x['t'], x['x'], x['y'], x['z'], x['state'])
                                 for x in coordinates.to_records())
     f = iter_file.IteratorFile(outs)
-    cur.copy_from(f, 'gamestate', columns=('gamedate', 'game', 'event', 'teamid', 'pid', 't', 'x', 'y', 'z'))
+    cur.copy_from(f, 'gamestate', columns=('gamedate', 'game', 'event', 'teamid', 'pid', 't', 'x', 'y', 'z', 'state'))
 
 def entity_db(dryrun=False):
     con = None
@@ -166,7 +174,7 @@ def ball_db():
         if con:
             con.close()
 
-#hard_create_db()
+hard_create_db()
 entity_db(dryrun=True)
 #ball_db()
 
@@ -221,8 +229,6 @@ if __name__ == "__main__":
             trajectory = process_entity(moments_valid, headers, ientity)
          #cur.execute("CREATE UNIQUE INDEX ON gamestate (game, event, pid, t)")
     except psycopg2.DatabaseError as e:
-        if con:
-            con.rollback()
         print('Error %s' % e)
     #coordinates[0]
     print(db_size())
