@@ -35,7 +35,7 @@ def create_entity_table(con):
     try:
         cur = con.cursor()
         cur.execute("DROP TABLE IF EXISTS gamestate")
-        cur.execute("CREATE TABLE gamestate(row SERIAL PRIMARY KEY, gamedate TIMESTAMP WITHOUT TIME ZONE, game VARCHAR(10) NOT NULL DEFAULT '', event INTEGER NOT NULL DEFAULT 0, teamid INTEGER NOT NULL DEFAULT 0, pid INTEGER NOT NULL DEFAULT 0, t FLOAT NOT NULL DEFAULT 0, x FLOAT NOT NULL DEFAULT 0, y FLOAT NOT NULL DEFAULT 0, z FLOAT DEFAULT NULL, event SMALLINT NOT NULL DEFAULT 0);")
+        cur.execute("CREATE TABLE gamestate(row SERIAL PRIMARY KEY, gamedate TIMESTAMP WITHOUT TIME ZONE, game VARCHAR(10) NOT NULL DEFAULT '', event INTEGER NOT NULL DEFAULT 0, teamid INTEGER NOT NULL DEFAULT 0, pid INTEGER NOT NULL DEFAULT 0, t FLOAT NOT NULL DEFAULT 0, x FLOAT NOT NULL DEFAULT 0, y FLOAT NOT NULL DEFAULT 0, z FLOAT DEFAULT NULL, state SMALLINT NOT NULL DEFAULT 0);")
         con.commit()
     except psycopg2.DatabaseError as e:
         if con:
@@ -59,7 +59,6 @@ def populate_entity_table_full(con, ballonly=False, dryrun=False):
         for i, file_name in enumerate(tqdm.tqdm(file_names_valid)):
             populate_entity_table(dataPath + file_name, cur, ballonly=ballonly)
             if dryrun:
-                cur.execute("CREATE UNIQUE INDEX ON gamestate (game, pid, t)")
                 con.rollback()
         if not dryrun:
             con.commit()
@@ -133,7 +132,7 @@ def create_ball_table(con):
         print('Error %s' % e)
         #sys.exit(1)
 
-def populate_ball_table(con):
+def populate_ball_table_old(con):
     ### populate table
     try:
         coordinates = []
@@ -164,8 +163,10 @@ def ball_db():
     con = None
     try:
         con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
-        create_ball_table(con)
-        populate_ball_table(con)
+        #create_ball_table(con)
+        #populate_ball_table_old(con)
+        create_entity_table(con)
+        populate_entity_table_full(con, ballonly=True)
     except psycopg2.DatabaseError as e:
         if con:
             con.rollback()
@@ -174,7 +175,7 @@ def ball_db():
         if con:
             con.close()
 
-hard_create_db()
+#hard_create_db()
 entity_db(dryrun=True)
 #ball_db()
 
@@ -184,13 +185,14 @@ if __name__ == "__main__":
     try:
         con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
         cur = con.cursor()
-        cur.execute("SELECT x, y, z, vz, vy, vz FROM coordinates LIMIT 1000")
         #https://pythonspot.com/python-database-postgresql/
         #while True:
             #row = cur.fetchone()
             #if row == None: break
-        coordinates = np.array(cur.fetchall())
+        coordinates = False
         if coordinates:
+            cur.execute("SELECT x, y, z, vz, vy, vz FROM coordinates LIMIT 1000")
+            coordinates = np.array(cur.fetchall())
             print(coordinates[0])
             print(coordinates.shape)
             print()

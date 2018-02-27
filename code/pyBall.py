@@ -110,21 +110,23 @@ def all_position_data_load(file_name, carefully=True):
     coordinates = coordinates.assign(gamedate = gamedata["gamedate"])
     coordinates = coordinates.assign(period = (coordinates[['t']] // 720) + 1)
     ### add discretizations
-    bl = coordinates
-    bl = bl.assign(bit2 = np.where(bl.x <= 94/2, 0, 1))
-    bl = bl.assign(bit3 = np.where(bl.y <= 50/2, 0, 1))
-    ### calculate ball within or beyond 3 point line.
-    ###  33pt line is a 23.75 foot part-circle on top of a 22x14.2 foot rectangle:
-    ###       22*tan(acos(22/23.75)) + 4 + 9/12 = 13.698
-    ###    first symmetrize down to quarter court
-    bl = bl.assign(xsym = np.where(bl.x <= 94/2, bl.x, (94-bl.x)))
-    bl = bl.assign(ysym = np.where(bl.y <= 50/2, bl.y, (50-bl.y)))
-    ###    then define state within arc-on-box 3pt line contour
-    bl = bl.assign(bit1 = np.where((bl.ysym > 3) & (bl.xsym <= 14.2), 1, 0))
-    bl = bl.assign(bit1 = np.where((bl.ysym > 3) & (bl.xsym > 14.2) & (bl.xsym < ((23.75**2 - (bl.ysym - 25)**2)**0.5 + 5.25)), 1, bl.bit1))
-    ###    construct eight court states;
-    bl = bl.assign(state = 2**0*bl.bit1 + 2**1*bl.bit2 + 2**2*bl.bit3)
-    coordinates = coordinates.drop(columns=['xsym', 'ysym', 'bit1', 'bit2', 'bit3'])
+    if True:
+        bl = coordinates
+        bl = bl.assign(bit2 = np.where(bl.x <= 94/2, 0, 1))
+        bl = bl.assign(bit3 = np.where(bl.y <= 50/2, 0, 1))
+        ### calculate ball within or beyond 3 point line.
+        ###  http://www.nba.com/analysis/rules_1.html
+        ###  33pt line is a 23.75 foot part-circle on top of a 22x14.2 foot rectangle:
+        ###       22*tan(acos(22/23.75)) + 5.25 = 14.2
+        ###    first symmetrize down to quarter court
+        bl = bl.assign(xsym = np.where(bl.x <= 94/2, bl.x, (94-bl.x)))
+        bl = bl.assign(ysym = np.where(bl.y <= 50/2, bl.y, (50-bl.y)))
+        ###    then define state within arc-on-box 3pt line contour
+        bl = bl.assign(bit1 = np.where((bl.ysym > 3) & (bl.xsym <= 14.2), 1, 0))
+        bl = bl.assign(bit1 = np.where((bl.ysym > 3) & (bl.xsym > 14.2) & (bl.xsym < ((23.75**2 - (bl.ysym - 25)**2)**0.5 + 5.25)), 1, bl.bit1))
+        ###    construct eight court states;
+        bl = bl.assign(state = 2**0*bl.bit1 + 2**1*bl.bit2 + 2**2*bl.bit3)
+        coordinates = coordinates.assign(state = bl.state)
     return(coordinates)
 
 def process_event(json_str, nevent, headers, file_name, t_end_last, p_last):
@@ -323,7 +325,7 @@ def db_size():
     try:
         con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
         cur = con.cursor()
-        cur.execute("SELECT COUNT(*) FROM coordinates")
+        cur.execute("SELECT COUNT(*) FROM gamestate")
     except psycopg2.DatabaseError as e:
         print('Error %s' % e)
     return( cur.fetchone()[0] )
@@ -445,7 +447,7 @@ if __name__ == '__main__' and False:
     if True:
         con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
         cur = con.cursor()
-        cur.execute("SELECT gamedate, game, event, teamid, pid, t, x, y, z FROM gamestate")
+        cur.execute("SELECT gamedate, game, event, teamid, pid, t, x, y, z, state FROM gamestate")
         coorddb = pd.DataFrame(cur.fetchall())
     #coordinates_old = ball_data_load( file_name )
     print(coordinates_old[0:5])
