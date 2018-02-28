@@ -304,31 +304,47 @@ def court_phase_space_generate_db(n="full"):
         coordinates = np.array(list(filter(lambda x: _validate_velocity(x), coordinates)))   ### filter out invalid velocities
         return( coordinates )
 
-def build_distribution(n="full"):
+def build_distribution(n="full", id_max=False):
     ### init output dist
     dist = np.zeros([4,4,4,4,4])
-    ### init query
-    n = '' if n == "full" else 'LIMIT {}'.format(n)
-    #https://stackoverflow.com/questions/32356330/how-do-i-generate-a-random-sample-of-groups-including-all-people-in-the-group
-    query = """
-    SELECT gout.game, gout.teamid, gout.pid, gout.t * 100, gout.state FROM gamestate AS gout
-        JOIN (
-            SELECT game, t, obs FROM (
-                SELECT game, t, count(*) AS obs FROM gamestate GROUP BY game, t -- this randomly select game times, so I can pull all 11 obs of random moments
-            ) AS f WHERE obs = 11 GROUP BY game, t, obs -- obs = 11 is controlling  for a few bad entries, edge cases of double inputs
-            ORDER BY RANDOM()  {}
-        ) AS gkey ON (gout.game = gkey.game AND gout.t = gkey.t ) --- match core table to randommly selected rows
-    ORDER BY gout.game, gout.t, gout.teamid, gout.pid;
-        """.format(n)
-    ### TODO with replacement (and speed up tricks): https://www.periscopedata.com/blog/how-to-sample-rows-in-sql-273x-faster
-    ### TODO fix bug causing obs = 11 failures
-    ### connect to db and execute, in safety
+    ### get dbsize
     try:
         con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
         cur = con.cursor()
-        cur.execute( query )
     except psycopg2.DatabaseError as e:
         print('Error %s' % e)
+        raise e
+    if not id_max:
+        cur.execute("SELECT MAX(row) FROM gamestate")
+        id_max = cur.fetchone()[0]
+    ### init query
+    #n = '' if n == "full" else 'LIMIT {}'.format(n)
+    n = id_max if n == "full" else n
+    #https://stackoverflow.com/questions/32356330/how-do-i-generate-a-random-sample-of-groups-including-all-people-in-the-group
+    query = """
+    SELECT gout.game, gout.teamid, gout.pid, gout.t * 100 AS t, gout.state FROM gamestate AS gout
+        JOIN (
+            SELECT game, t, obs FROM (
+                -- vvv this randomly select game times, so I can pull all 11 obs of random moments
+                SELECT MIN(row) AS therow, game, t, COUNT(*) AS obs FROM gamestate GROUP BY game, t
+            )
+            AS f
+            WHERE
+            therow IN ( -- https://www.periscopedata.com/blog/how-to-sample-rows-in-sql-273x-faster
+                SELECT ROUND(RANDOM() * {})::INTEGER AS therow
+                FROM GENERATE_SERIES(1, {})
+                -- GROUP BY therow -- Discard or keep duplicates (commented means keep dublicates---saomple with replacement)
+            )
+            GROUP BY game, t, obs LIMIT {}
+        --- match core table to randommly selected rows
+        ---     the 11 is controlling  for a few bad entries, edge cases of double inputs
+        ) AS gkey ON (gout.game = gkey.game AND gout.t = gkey.t and gkey.obs = 11)
+    ORDER BY gout.game, gout.t, gout.teamid, gout.pid;
+        """.format(id_max, id_max, n)
+    ### TODO fix build/load error causing obs = 11 failures (costly to catch here)
+    ### connect to db and execute, in safety
+    ### SLOW
+    cur.execute( query )
     ### with cursor, build distribution in a memory efficient manner
     states = np.array([])
     while True:
@@ -355,9 +371,14 @@ def build_distribution(n="full"):
     return( dist )
 
 if False:
-    dist = build_distribution(10)
+    if True:
+        con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
+        cur = con.cursor()
+        cur.execute("SELECT MAX(row) FROM gamestate")
+        id_max = cur.fetchone()[0]
+    dist = build_distribution(10, id_max)
     assert dist.sum() == 20
-    distfull = build_distribution()
+    distfull = build_distribution(id_max=id_max)
     print(distfull.sum())
 
 def ball_phase_space_generate_db(n):
