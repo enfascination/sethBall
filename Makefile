@@ -1,8 +1,8 @@
 clean:
 	#rm ./code/*.pyc
 	echo 'DROP DATABASE IF EXISTS nba_tracking;' > zzzhelp_dropdb.sql
-	#chmod u+x zzzhelp_dropdb.sql
-	psql -a -f zzzhelp_dropdb.sql
+	chmod u+x zzzhelp_dropdb.sql
+	/Applications/Postgres.app/Contents/Versions/10/bin/psql -a -f zzzhelp_dropdb.sql
 	rm zzzhelp_dropdb.sql
 
 build:
