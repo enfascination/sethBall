@@ -30,18 +30,35 @@ def ball_phase_space_generate(directory_name):
     file_names = os.listdir(directory_name)
     coordinates = []
     for file_name in tqdm.tqdm(file_names):
-        game_data = ball_data_load(directory_name + file_name)
+        game_data = ball_data_load(jsonstr_from_filename(directory_name + file_name))
         if len(game_data) > 0:
             for point in game_data:
                 coordinates.append(point)
     return np.array(coordinates)
 
-def all_position_data_load(file_name, carefully=True):
+def jsonstr_from_filename(file_name):
+    """
+    Check to make sure that the file is a json file
+    returns False if the file doesn't exist or isn't a large json file
+    otherwise returns a large string ready to be processed by json.loads()
+    """
+    json_strs = False
+    if _check_url(file_name):
+        json_strs = _get_jsonurl_str(file_name) ### this can also pass False
+    elif _check_json(file_name):
+        json_strs = _get_json_str(file_name)
+    elif _check_jsongz(file_name):
+        json_strs = _get_json_str(file_name, gzipped=True)
+    if json_strs and len(json_strs) <= 1:
+        json_strs = False
+    return(json_strs)
+
+def all_position_data_load(json_strs, carefully=True):
     """Loads the phase-space coordinates, (gameid, playerid,t,x,y,z), for all 
     the frames of a game, for all entities (players and ball).
     
     INPUT
-    file_name       The location of the file being read
+    json_strs       The location of the file being read
     
     OUTPUT
     coordinates     An array of arrays. The top layer is the contiguous trajectories.
@@ -51,11 +68,6 @@ def all_position_data_load(file_name, carefully=True):
     #this is the prjector that picks out the time stamp and spatial coordinates of
     # the ball from the moment data
     
-    #Check to make sure that the file is a json file
-    if _check_json(file_name):
-        json_strs = _get_json_str(file_name)
-    elif _check_jsongz(file_name):
-        json_strs = _get_json_str(file_name, gzipped=True)
     # first get game-scale descriptives for later use
     event1 = json.loads(json_strs[0])
     gamedata = {}
@@ -74,7 +86,7 @@ def all_position_data_load(file_name, carefully=True):
     for nevent, json_str in enumerate(json_strs):
         ###vvv no data in this event
         if len(json_str) == 0: continue
-        trajectories, _t_end_last, _p_last = process_event(json_str, nevent, headers, file_name, t_end_last, p_last)
+        trajectories, _t_end_last, _p_last = process_event(json_str, nevent, headers, gamedata['gameid'], t_end_last, p_last)
         if trajectories is None: 
             continue
         else:
@@ -86,7 +98,7 @@ def all_position_data_load(file_name, carefully=True):
             ###    (and no events in coordinates twwice)
             coordinates.set_index(['playerid', 'eventid', 't'], verify_integrity=True)
         except ValueError as err:
-            print("PROBLEM LNM<DFJKH: Same eventid in multiple events? file %s, incl event %s" % (file_name, nevent))
+            print("PROBLEM LNM<DFJKH: Same eventid in multiple events? file %s, incl event %s" % (gamedata['gameid'], nevent))
             print(err)
             raise
     if coordinates.duplicated(subset=['t', 'playerid']).any():
@@ -94,14 +106,14 @@ def all_position_data_load(file_name, carefully=True):
             #print("PROBLEM :LDFJKS:HJ: Found and caught eliminable duplicates, entity %d" % (ientity))
             coordinates = coordinates.drop_duplicates(subset=['playerid', 't'])
         else:
-            print("PROBLEM YKFHJD: TOUGH SPOT Found ultimately recoverable but mildy worrisome and hopefully nonexistent duplicates in file %s, between events (or coordinates is empty? %d), dup count: %d" % (file_name, coordinates.shape[0], sum(coordinates.duplicated(subset=['t', 'playerid']))))
+            print("PROBLEM YKFHJD: TOUGH SPOT Found ultimately recoverable but mildy worrisome and hopefully nonexistent duplicates in file %s, between events (or coordinates is empty? %d), dup count: %d" % (gamedata['gameid'], coordinates.shape[0], sum(coordinates.duplicated(subset=['t', 'playerid']))))
             coordinates = coordinates.drop_duplicates(subset=['gameid', 't','playerid'])
     ### make proper key
     coordinates = coordinates.assign(gameid = gamedata["gameid"])
     try:
         coordinates.set_index(['gameid', 'playerid', 't'], verify_integrity=True)
     except:
-        print("PROBLEM :LKFJD: intractable duplicates file %s (or coordinates is empty? %d)" % (file_name, coordinates.shape[0]))
+        print("PROBLEM :LKFJD: intractable duplicates file %s (or coordinates is empty? %d)" % (gamedata['gameid'], coordinates.shape[0]))
         if coordinates.shape[0] > 0:
             raise
             #pass
@@ -129,7 +141,7 @@ def all_position_data_load(file_name, carefully=True):
         coordinates = coordinates.assign(state = bl.state)
     return(coordinates)
 
-def process_event(json_str, nevent, headers, file_name, t_end_last, p_last):
+def process_event(json_str, nevent, headers, gameid, t_end_last, p_last):
     moments = json.loads(json_str)['moments']
     #this is where the data is projected into the coordinate list
     ### repeat this for each entity on the court
@@ -157,7 +169,7 @@ def process_event(json_str, nevent, headers, file_name, t_end_last, p_last):
             if trajectory is None: break
             trajectories.append( trajectory )
         except:
-            print("%s %d %d"%(file_name, nevent, ientity))
+            print("%s %d %d"%(gameid, nevent, ientity))
             raise
     if True: ### a few filters with criteria for skipping an event
         if len(trajectories) == 0 : return((None,None,None)) #print("PASS SDJFGR: Skips for no data")
@@ -166,7 +178,7 @@ def process_event(json_str, nevent, headers, file_name, t_end_last, p_last):
         ents = set()
         _ = [ents.update(df.playerid) for df in trajectories]
         if len(ents) != 11:
-            #print("RARE PROBLEM HSDGJF: missing players: %s %d %d"%(file_name, nevent, len(ents)))
+            #print("RARE PROBLEM HSDGJF: missing players: %s %d %d"%(gameid, nevent, len(ents)))
             return((None,None,None))
     ### now combine entity objects into event-scale team-scale data
     trajectories = pd.concat( trajectories, ignore_index=True)
@@ -185,7 +197,7 @@ def process_event(json_str, nevent, headers, file_name, t_end_last, p_last):
     try:
         trajectories.set_index(['playerid', 'eventid', 't'], verify_integrity=True)
     except:
-        print("PROBLEM TKJFLL: Found duplicates unrecoverably, file %s, event %s" % (file_name, nevent))
+        print("PROBLEM TKJFLL: Found duplicates unrecoverably, file %s, event %s" % (gameid, nevent))
         raise
     return(( trajectories, t_end_last, p_last ))
 
@@ -204,8 +216,8 @@ def process_entity(moments_valid, headers, ientity):
     trajectory = pd.DataFrame(data=trajectory, columns=headers)
     return(trajectory)
 
-def ball_data_load(file_name):
-    coordinates = all_position_data_load( file_name ) ### load full object with all entities
+def ball_data_load(json_strs):
+    coordinates = all_position_data_load( json_strs) ### load full object with all entities
     coordinates = coordinates.query("playerid == -1") ### pick out ball entitities
     coord = _add_velocity( np.array(coordinates.loc[:,("t","x","y","z")].T  )).T ### add velocities
     coord = coord[:,1:7] ### cut timestamps (move this line down 1 if i decdie I want them)
@@ -381,12 +393,30 @@ def _check_jsongz(file_name):
     #checks to see if the extension of a file is .json
     return file_name[-7:]=='json.gz'
 
+def _check_url(file_name):
+    #checks to see if the root of a file is http
+    return file_name[:7]=='http://'
+
 def _get_json_str(file_name, gzipped=False):
     if not gzipped:
         json_file = open(file_name,'r')
     else:
         json_file = gzip.open(file_name,'rt')
     return json_file.read().split('\n')
+
+def _get_jsonurl_str(file_name, gzipped=True):
+    ### https://stackoverflow.com/questions/9419162/python-download-returned-zip-file-from-url/14260592jj
+    import requests, io
+    r = requests.get(file_name)
+    if r.ok:
+        if not gzipped:
+            json_file = open(io.BytesIO(r.content),'rt')
+        else:
+            json_file = gzip.open(io.BytesIO(r.content),'rt')
+        json_file = json_file.read().split('\n')
+    else:
+        json_file = False
+    return(json_file)
 
 def _clean_time(trajectory, itime=0):
     """ given a 2d array and the index of its time column,
@@ -442,7 +472,7 @@ if __name__ == '__main__' and False:
     np.set_printoptions(formatter={'float_kind':'{:f}'.format})
     file_name = dataPath + "nbagame0021400377.json.gz"
     json_strs = _get_json_str(file_name, gzipped=True)
-    coordinates = all_position_data_load( file_name )
+    coordinates = all_position_data_load( jsonstr_from_filename(file_name ))
     coordinates_old = ball_data_load_old( file_name )
     if True:
         con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")

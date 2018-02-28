@@ -112,7 +112,7 @@ class TestCoordTestData(unittest.TestCase):
         self.assertTrue( np.array_equal( c1[0:5], c2[0:5]), "%s != %s" % (str(c1.shape) , str(c2.shape) ) )
 
     def test_all_position_data_load(self):
-        coordinates = pyBall.all_position_data_load( self.file_name )
+        coordinates = pyBall.all_position_data_load( pyBall.jsonstr_from_filename(self.file_name))
         #self.assertTrue(len(coordinates) == 201747, len(coordinates))
 
     def test_clean_time(self):

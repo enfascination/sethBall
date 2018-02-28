@@ -113,7 +113,7 @@ if False:
     plt.show()
     ### lookups
     file_name = dataPath + "nbagame0021400377.json.gz"
-    coordinates = pyBall.all_position_data_load( file_name )
+    coordinates = pyBall.all_position_data_load( pyBall.json_from_filename(file_name) )
     coordinates = coordinates.assign(bit2 = np.where(coordinates.x <= 94/2, 0, 1))
     coordinates = coordinates.assign(bit3 = np.where(coordinates.y <= 50/2, 0, 1))
     ### calculate ball within or beyond 3 point line.

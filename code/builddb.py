@@ -11,7 +11,7 @@ import tqdm
 import psycopg2
 
 import pyBall
-from pyBall import ball_data_load, db_size, all_position_data_load
+from pyBall import ball_data_load, db_size, all_position_data_load, jsonstr_from_filename
 from iter_file import iter_file
 
 """
@@ -43,21 +43,13 @@ def create_entity_table(con):
         print('Error %s' % e)
         #sys.exit(1)
 
-def populate_entity_table_full(con, ballonly=False, dryrun=False):
-    ### populate table
-    file_names = os.listdir(dataPath)
-    file_names_valid = []
-    cur = con.cursor()
-    for i, file_name in enumerate(file_names):
-        #if i < 425: continue ### <<< temp code for continuing job mid-chug
-        ### this prevents DS_Store files from crashing the thing, but this may 
-        ###  interfere with processessing other seasons in different file/naming formats
-        if file_name[0:7] != "nbagame": continue
-        if os.stat(dataPath + file_name).st_size < 50: continue  ### empyt zip files
-        file_names_valid.append(file_name)
+def populate_entity_table_full(con, file_names, ballonly=False, dryrun=False):
     try:
-        for i, file_name in enumerate(tqdm.tqdm(file_names_valid)):
-            populate_entity_table(dataPath + file_name, cur, ballonly=ballonly)
+        cur = con.cursor()
+        for i, file_name in enumerate(tqdm.tqdm(file_names)):
+            json_strs = jsonstr_from_filename(file_name)
+            if json_strs:
+                populate_entity_table(json_strs, cur, ballonly=ballonly)
             if dryrun:
                 con.rollback()
         if not dryrun:
@@ -71,11 +63,11 @@ def populate_entity_table_full(con, ballonly=False, dryrun=False):
         print( 'Error %s' % e )
         raise
 
-def populate_entity_table(file_name, cur, ballonly=False):
+def populate_entity_table(json_strs, cur, ballonly=False):
     if not ballonly:
-        coordinates = all_position_data_load(file_name)
+        coordinates = all_position_data_load(json_strs)
     else:
-        coordinates = ball_data_load(file_name)
+        coordinates = ball_data_load(json_strs)
         print(coordinates.columns)
     ### in case there is cod etha tisn't performing discretization
     if 'state' not in coordinates.columns:
@@ -103,13 +95,13 @@ def populate_entity_table(file_name, cur, ballonly=False):
     f = iter_file.IteratorFile(outs)
     cur.copy_from(f, 'gamestate', columns=('gamedate', 'game', 'event', 'teamid', 'pid', 't', 'x', 'y', 'z', 'state'))
 
-def entity_db(dryrun=False):
+def entity_db(file_names, dryrun=False):
     con = None
     try:
         con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
         create_entity_table(con)
         #populate_entity_table_full(con)
-        populate_entity_table_full(con, dryrun=dryrun)
+        populate_entity_table_full(con, file_names, dryrun=dryrun)
     except psycopg2.DatabaseError as e:
         if con:
             con.rollback()
@@ -118,6 +110,23 @@ def entity_db(dryrun=False):
         if con:
             con.close()
 
+def _get_filenames_local():
+    ### populate table
+    file_names = os.listdir(dataPath)
+    file_names_valid = []
+    for i, file_name in enumerate(file_names):
+        #if i < 425: continue ### <<< temp code for continuing job mid-chug
+        ### this prevents DS_Store files from crashing the thing, but this may 
+        ###  interfere with processessing other seasons in different file/naming formats
+        if file_name[0:7] != "nbagame": continue
+        if os.stat(dataPath + file_name).st_size < 50: continue  ### empyt zip files
+        file_names_valid.append(dataPath + file_name)
+    return(file_names_valid)
+
+def _get_filenames_freycloud():
+    url_list = ["http://enfascination.com/cloud/index.php/s/mcXgGZBZEsulmLh/download?path=%2F&files=nbagame0021400"+("%03d"%i)+".json.gz" for i in range(1,400)]
+    #url_list = ["http://enfascination.com/cloud/index.php/s/mcXgGZBZEsulmLh/download?path=%2F&files=nbagame0021400"+("%03d"%i)+".json.gz" for i in range(382,400,)]
+    return(url_list)
 
 ### create table
 def create_ball_table(con):
@@ -166,7 +175,8 @@ def ball_db():
         #create_ball_table(con)
         #populate_ball_table_old(con)
         create_entity_table(con)
-        populate_entity_table_full(con, ballonly=True)
+        file_names = _get_filenames_local()
+        populate_entity_table_full(con, file_names, ballonly=True)
     except psycopg2.DatabaseError as e:
         if con:
             con.rollback()
@@ -175,8 +185,9 @@ def ball_db():
         if con:
             con.close()
 
-#hard_create_db()
-entity_db(dryrun=True)
+hard_create_db()
+#entity_db(_get_filenames_local(), dryrun=True)
+entity_db( _get_filenames_freycloud(), dryrun=False)
 #ball_db()
 
 ### test queries
@@ -209,7 +220,7 @@ if __name__ == "__main__":
             file_name = "nbagame0021400314.json.gz"
             file_name = "nbagame0021400308.json.gz"
             populate_entity_table(dataPath +  file_name, cur)
-            coordinates = all_position_data_load(dataPath + file_name)
+            coordinates = all_position_data_load(jsonstr_from_filename(dataPath + file_name))
             json_strs = _get_json_str(dataPath + file_name, gzipped=True)
             headers = ("teamid", "playerid", "t", "x", "y", "z")
             coord = pd.DataFrame(columns=headers)
