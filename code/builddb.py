@@ -95,6 +95,11 @@ def populate_entity_table(json_strs, cur, ballonly=False):
                                 for x in coordinates.to_records())
     f = iter_file.IteratorFile(outs)
     cur.copy_from(f, 'gamestate', columns=('gamedate', 'game', 'event', 'teamid', 'pid', 't', 'x', 'y', 'z', 'state'))
+if False:
+    t = "select count(*) as obs from gamestate group by game, t "
+    t = "select max(obs), min(obs), count(obs), count(obs = 11 OR NULL), count(obs=12 OR NULL), count(obs=13 OR NULL) from (select count(*) as obs from gamestate group by game, t ) as f;"
+    t = "SELECT game, t, obs FROM (SELECT game, t, count(*) AS obs FROM gamestate GROUP BY game, t) AS f WHERE obs = 13 "
+    t = "select * from gamestate where game = '0021400321' and t = 2078;"
 
 def entity_db(file_names, dryrun=False):
     con = None

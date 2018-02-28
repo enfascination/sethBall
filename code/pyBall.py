@@ -304,6 +304,62 @@ def court_phase_space_generate_db(n="full"):
         coordinates = np.array(list(filter(lambda x: _validate_velocity(x), coordinates)))   ### filter out invalid velocities
         return( coordinates )
 
+def build_distribution(n="full"):
+    ### init output dist
+    dist = np.zeros([4,4,4,4,4])
+    ### init query
+    n = '' if n == "full" else 'LIMIT {}'.format(n)
+    #https://stackoverflow.com/questions/32356330/how-do-i-generate-a-random-sample-of-groups-including-all-people-in-the-group
+    query = """
+    SELECT gout.game, gout.teamid, gout.pid, gout.t * 100, gout.state FROM gamestate AS gout
+        JOIN (
+            SELECT game, t, obs FROM (
+                SELECT game, t, count(*) AS obs FROM gamestate GROUP BY game, t -- this randomly select game times, so I can pull all 11 obs of random moments
+            ) AS f WHERE obs = 11 GROUP BY game, t, obs -- obs = 11 is controlling  for a few bad entries, edge cases of double inputs
+            ORDER BY RANDOM()  {}
+        ) AS gkey ON (gout.game = gkey.game AND gout.t = gkey.t ) --- match core table to randommly selected rows
+    ORDER BY gout.game, gout.t, gout.teamid, gout.pid;
+        """.format(n)
+    ### TODO with replacement (and speed up tricks): https://www.periscopedata.com/blog/how-to-sample-rows-in-sql-273x-faster
+    ### TODO fix bug causing obs = 11 failures
+    ### connect to db and execute, in safety
+    try:
+        con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
+        cur = con.cursor()
+        cur.execute( query )
+    except psycopg2.DatabaseError as e:
+        print('Error %s' % e)
+    ### with cursor, build distribution in a memory efficient manner
+    states = np.array([])
+    while True:
+        prev = states
+        ### WARNING: change dtype below to float if ever using x,y,or z
+        states = np.array(cur.fetchmany(11), dtype=int).transpose() ### note *100 in query so that t's dont get truncated on conversion to int
+        if not states.size: break ### end of query hits
+        ### sanity and hygeine tests, thorough
+        try:
+            assert len(np.unique(states[3])) == 1, "states are coming from different points in time {}".format(np.unique(states[3]))
+            assert len(np.unique(states[0])) == 1, " ... or different games: {}".format(np.unique(states[0]))
+            assert len(np.unique(states[1])) == 3, "... or more than three teamids: {}".format(np.unique(states[1])) #(t1, t2, and the ball in its own league)
+            assert len(np.unique(states[2])) == len(states[2]), "... fewer than 11 entities: {} {} {}".format(len(np.unique(states[2])), len(states[2]), np.unique(states[2]))
+        except AssertionError as e:
+            print(e)
+            print(prev)
+            print(states)
+            print("it gets much worse after this")
+            raise e
+        t1 = states[4][1:6] // 2  ### the // 2 is to convert 8 states down to (tractable) 4
+        t2 = states[4][6:11] // 2
+        dist[tuple(t1)] += 1
+        dist[tuple(t2)] += 1
+    return( dist )
+
+if False:
+    dist = build_distribution(10)
+    assert dist.sum() == 20
+    distfull = build_distribution()
+    print(distfull.sum())
+
 def ball_phase_space_generate_db(n):
     """Extracts all the points in phase space of the ball from 
     the database built by running builddb.py
