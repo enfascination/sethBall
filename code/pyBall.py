@@ -271,6 +271,39 @@ def ball_data_load_old(file_name):
         pass
     return np.array(coordinates)
 
+def court_phase_space_generate_db(n="full"):
+    if False:
+        coordinates = np.array([])
+        try:
+            con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
+            cur = con.cursor()
+            if n == "full":
+                cur.execute("SELECT COUNT(*) FROM gamestate")
+                n = cur.fetchall()
+            #https://stackoverflow.com/questions/32356330/how-do-i-generate-a-random-sample-of-groups-including-all-people-in-the-group
+            query = """
+            SELECT gs_out.game, gs_out.team, gs_out.pid, gs_out.t, gs_out.state FROM gamestate AS gs_out
+                JOIN (
+                    SELECT game, t FROM gamestate GROUP BY game, t ORDER BY RANDOM() LIMIT 4
+                ) AS gs_groupkey ON (gs_out.game = gs_groupkey.game AND gs_out.t = gs_groupkey.t)
+            ORDER BY gs_out.game, gs_out.t;
+                """
+                ### with replacement (and speed up tricks): https://www.periscopedata.com/blog/how-to-sample-rows-in-sql-273x-faster
+            cur.execute("SELECT game, pid, t, state FROM gamestate LIMIT %s"%(n,))
+            #https://pythonspot.com/python-database-postgresql/
+            #while True:
+                #row = cur.fetchone()
+                #if row == None: break
+            coordinates = np.array(cur.fetchall())
+        except psycopg2.DatabaseError as e:
+            if con:
+                con.rollback()
+            print('Error %s' % e)
+        coordinates = _add_velocity( coordinates.T ).T ### add velocities
+        coordinates = coordinates[:,1:7] ### cut timestamps (move this line down 1 if i decdie I want them)
+        coordinates = np.array(list(filter(lambda x: _validate_velocity(x), coordinates)))   ### filter out invalid velocities
+        return( coordinates )
+
 def ball_phase_space_generate_db(n):
     """Extracts all the points in phase space of the ball from 
     the database built by running builddb.py
@@ -334,13 +367,15 @@ def db_size():
     OUTPUT
     n  the number of entries in the database
     """
+    out = False
     try:
         con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
         cur = con.cursor()
         cur.execute("SELECT COUNT(*) FROM gamestate")
+        out = cur.fetchone()[0]
     except psycopg2.DatabaseError as e:
         print('Error %s' % e)
-    return( cur.fetchone()[0] )
+    return( out )
 
 
 def _validate_point(point, ball=False):
