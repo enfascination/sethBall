@@ -52,8 +52,9 @@ def populate_entity_table_full(con, file_names, ballonly=False, dryrun=False):
                 populate_entity_table(json_strs, cur, ballonly=ballonly)
             if dryrun:
                 con.rollback()
+            else:
+                con.commit()
         if not dryrun:
-            con.commit()
             cur.execute("CREATE UNIQUE INDEX ON gamestate (game, pid, t)")
             con.commit()
     except psycopg2.DatabaseError as e:
