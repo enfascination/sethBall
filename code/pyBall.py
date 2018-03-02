@@ -304,9 +304,31 @@ def court_phase_space_generate_db(n="full"):
         coordinates = np.array(list(filter(lambda x: _validate_velocity(x), coordinates)))   ### filter out invalid velocities
         return( coordinates )
 
-def build_distribution(n=-1, dim=6, id_max=False):
+def coarsen_octal(octal, bins):
+    if bins == 8:
+        out = octal
+    elif bins == 4:
+        out = octal // 2   ### the // 2 is to convert 8 states down to (tractable) 4
+    elif bins == 6:  ### take strange choices for octal and make them sane choices at 6 
+        if octal == 1 or octal == 5:
+            out = 0
+        if octal == 3 or octal == 7:
+            out = 1
+        if octal == 0:
+            out = 2
+        if octal == 4:
+            out = 3
+        if octal == 2:
+            out = 4
+        if octal == 6:
+            out = 5
+    else:
+        print("PROBLEM JAGFJRRR: bin size not defined.")
+    return(out)
+
+def build_distribution(n=-1, bins=4, dims=6, id_max=False):
     ### init output dist
-    dist = np.zeros( tuple(np.repeat(4,dim)) )
+    dist = np.zeros( tuple(np.repeat(bins,dims)) )
     ### get dbsize
     try:
         con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
@@ -364,17 +386,19 @@ def build_distribution(n=-1, dim=6, id_max=False):
             print(states)
             print("it gets much worse after this")
             raise e
-        if dim == 6:
-            t1 = states[4][0:6] // 2  ### the // 2 is to convert 8 states down to (tractable) 4
-            t2 = states[4][np.r_[0,6:11]] // 2
-        elif dim == 5:
-            t1 = states[4][1:6] // 2  ### the // 2 is to convert 8 states down to (tractable) 4
-            t2 = states[4][6:11] // 2
+        if dims == 6:
+            t1 = states[4][0:6]
+            t2 = states[4][np.r_[0,6:11]]
+        elif dims == 5:
+            t1 = states[4][1:6]
+            t2 = states[4][6:11]
         else:
             print("that dimensionality isn't written yet")
             raise
-        dist[tuple(t1)] += 1
-        dist[tuple(t2)] += 1
+        t1 = tuple(map(lambda x: coarsen_octal(x,bins), t1))
+        t2 = tuple(map(lambda x: coarsen_octal(x,bins), t2))
+        dist[t1] += 1
+        dist[t2] += 1
     return( dist )
 
 if False:
