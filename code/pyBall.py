@@ -304,9 +304,9 @@ def court_phase_space_generate_db(n="full"):
         coordinates = np.array(list(filter(lambda x: _validate_velocity(x), coordinates)))   ### filter out invalid velocities
         return( coordinates )
 
-def build_distribution(n="full", id_max=False):
+def build_distribution(n=-1, dim=6, id_max=False):
     ### init output dist
-    dist = np.zeros([4,4,4,4,4])
+    dist = np.zeros( tuple(np.repeat(4,dim)) )
     ### get dbsize
     try:
         con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
@@ -318,8 +318,8 @@ def build_distribution(n="full", id_max=False):
         cur.execute("SELECT MAX(row) FROM gamestate")
         id_max = cur.fetchone()[0]
     ### init query
-    #n = '' if n == "full" else 'LIMIT {}'.format(n)
-    n = id_max if n == "full" else n
+    #n = '' if n == -1 else 'LIMIT {}'.format(n)
+    n = id_max if n == -1 else n
     #https://stackoverflow.com/questions/32356330/how-do-i-generate-a-random-sample-of-groups-including-all-people-in-the-group
     query = """
     SELECT gout.game, gout.teamid, gout.pid, gout.t * 100 AS t, gout.state FROM gamestate AS gout
@@ -364,11 +364,29 @@ def build_distribution(n="full", id_max=False):
             print(states)
             print("it gets much worse after this")
             raise e
-        t1 = states[4][1:6] // 2  ### the // 2 is to convert 8 states down to (tractable) 4
-        t2 = states[4][6:11] // 2
+        if dim == 6:
+            t1 = states[4][0:6] // 2  ### the // 2 is to convert 8 states down to (tractable) 4
+            t2 = states[4][np.r_[0,6:11]] // 2
+        elif dim == 5:
+            t1 = states[4][1:6] // 2  ### the // 2 is to convert 8 states down to (tractable) 4
+            t2 = states[4][6:11] // 2
+        else:
+            print("that dimensionality isn't written yet")
+            raise
         dist[tuple(t1)] += 1
         dist[tuple(t2)] += 1
     return( dist )
+
+if False:
+    if True:
+        con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
+        cur = con.cursor()
+        cur.execute("SELECT MAX(row) FROM gamestate")
+        id_max = cur.fetchone()[0]
+    dist = build_distribution(10, id_max=id_max)
+    assert dist.sum() == 20
+    distfull = build_distribution(id_max=id_max)
+    print(distfull.sum())
 
 def build_distribution_alt(n="full"):
     ### init output dist
@@ -419,17 +437,6 @@ def build_distribution_alt(n="full"):
         dist[tuple(t1)] += 1
         dist[tuple(t2)] += 1
     return( dist )
-
-if False:
-    if True:
-        con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
-        cur = con.cursor()
-        cur.execute("SELECT MAX(row) FROM gamestate")
-        id_max = cur.fetchone()[0]
-    dist = build_distribution(10, id_max)
-    assert dist.sum() == 20
-    distfull = build_distribution(id_max=id_max)
-    print(distfull.sum())
 
 def ball_phase_space_generate_db(n):
     """Extracts all the points in phase space of the ball from 
