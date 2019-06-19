@@ -192,8 +192,8 @@ def ball_db():
             con.close()
 
 hard_create_db()
-#entity_db(_get_filenames_local(), dryrun=True)
-entity_db( _get_filenames_freycloud(), dryrun=False)
+entity_db(_get_filenames_local(), dryrun=False)
+#entity_db( _get_filenames_freycloud(), dryrun=True)
 #ball_db()
 
 ### test queries

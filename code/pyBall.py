@@ -117,6 +117,10 @@ def all_position_data_load(json_strs, carefully=True):
         if coordinates.shape[0] > 0:
             raise
             #pass
+    ### now eliminate time steps that lack 11 entities
+    timesBad = coordinates.groupby(['t']).count().query('playerid != 11').index
+    coordinates = coordinates[~coordinates.t.isin(timesBad)]
+    assert coordinates.shape[0] % 11 == 0, "PROBLEM ASDGFJEE: obviously failed to confirm 11 entities per time step, file %s, event %s" % (gameid, nevent)
     ### now add misc columns
     #TODO assign binary in/out of possession flag to each row
     coordinates = coordinates.assign(gamedate = gamedata["gamedate"])
@@ -194,6 +198,7 @@ def process_event(json_str, nevent, headers, gameid, t_end_last, p_last):
     ### now eliminate time steps that lack 11 entities
     timesBad = trajectories.groupby(['t']).count().query('playerid != 11').index
     trajectories = trajectories[~trajectories.t.isin(timesBad)]
+    assert trajectories.shape[0] % 11 == 0, "PROBLEM OJKLGGGD: obviously failed to confirm 11 entities per time step, file %s, event %s" % (gameid, nevent)
     try:
         trajectories.set_index(['playerid', 'eventid', 't'], verify_integrity=True)
     except:
@@ -328,7 +333,7 @@ def coarsen_octal(octal, bins):
 
 def build_distribution(n=-1, bins=4, dims=6, id_max=False):
     ### init output dist
-    dist = np.zeros( tuple(np.repeat(bins,dims)) )
+    dist = np.zeros( tuple(np.repeat(bins,dims)) , dtype=int)
     ### get dbsize
     try:
         con = psycopg2.connect("host='localhost' dbname='nba_tracking' port='5432'")
@@ -412,9 +417,115 @@ if False:
     distfull = build_distribution(id_max=id_max)
     print(distfull.sum())
 
+def bootstrap_dist_from_dist1(dist):
+    n = dist.sum()
+    ### np.indices returns a list of each d's indices that, when zipped, provides a list of indexes into a high-d distribution
+    distidxs = (list(zip(*(i.flatten() for i in np.indices(dist.shape))))) ### list of indices
+    ### this builds a list of distribution entries.  output probably identical to dist.flatten()
+    distvals = np.array([dist[i] for i in distidxs])
+    ### sorting so that bigger bins are in front makes a huge difference
+    distidxs = [x for _,x in sorted(zip(distvals,distidxs), reverse=True)] ### sort distidxs by distvals quantities
+    distvals = sorted(distvals, reverse=True) ### then sort distvals 
+    ### then build the cumulative to search through
+    distcum = np.array(distvals).cumsum()
+    distout = np.zeros( dist.shape, dtype=int )
+    #draw data indices things to draw from the dist
+    idxs = (distidxs[ draw_a_value(v,distcum) ] for v in np.random.choice(n,size=n))
+    for idx in idxs:
+        distout[idx] += 1
+    if False: ### test code
+        ### this should perfectly reproduce the input distribution. 
+        distout = np.zeros( dist.shape, dtype=int )
+        idxs = (distidxs[ draw_a_value(v,distcum) ] for v in range(n))
+        #idxs = (distidxs[ draw_a_value(v,distcum) ] for v in np.random.choice(n,size=n, replace=False)) ### shoudl also reproduce orignal dist
+        for idx in idxs: distout[idx] += 1
+        assert len(list(zip(distout[distout != dist], dist[distout != dist]))) == 0
+    return(distout)
+
+def bootstrap_dist_from_dist2(dist):
+    def normalize(arr):
+        return(arr/arr.sum())
+    n = dist.sum()
+    d = dist/n
+    distout = np.zeros( dist.shape, dtype=int )
+    for v in range(n):
+        d0i = np.argmax(d.sum(axis=(1,2,3,4,5)).cumsum() > np.random.rand()) # idx of d0
+        d1i = np.argmax(normalize(d.sum(axis=(2,3,4,5))[[d0i]]).cumsum() > np.random.rand()) # idx of d1
+        d2i = np.argmax(normalize(d.sum(axis=(3,4,5))[d0i][[d1i]]).cumsum() > np.random.rand()) # idx of d2
+        d3i = np.argmax(normalize(d.sum(axis=(4,5))[d0i][d1i][[d2i]]).cumsum() > np.random.rand()) # idx of d3
+        d4i = np.argmax(normalize(d.sum(axis=(5))[d0i][d1i][d2i][[d3i]]).cumsum() > np.random.rand()) # idx of d4
+        d5i = np.argmax(normalize(d[(d0i, d1i, d2i, d3i)][[d4i]]).cumsum() > np.random.rand()) # idx of d5
+        distout[(d0i, d1i, d2i, d3i, d4i, d4i)] += 1
+    return(distout)
+
+def bootstrap_dist_from_dist25(dist):
+    def normalize(arr):
+        return(arr/arr.sum())
+    n = dist.sum()
+    d = dist/n
+    distout = np.zeros( dist.shape, dtype=int )
+    for v in range(n):
+        d4 = d.sum(axis=(5))
+        d3 = d4.sum(axis=(4))
+        d2 = d3.sum(axis=(3))
+        d1 = d2.sum(axis=(2))
+        d0 = d1.sum(axis=(1))
+        d0i = np.argmax(d0.cumsum() > np.random.rand()) # idx of d0
+        d1i = np.argmax(normalize(d1[[d0i]]).cumsum() > np.random.rand()) # idx of d1
+        d2i = np.argmax(normalize(d2[d0i][[d1i]]).cumsum() > np.random.rand()) # idx of d2
+        d3i = np.argmax(normalize(d3[(d0i, d1i)][[d2i]]).cumsum() > np.random.rand()) # idx of d3
+        d4i = np.argmax(normalize(d4[(d0i, d1i, d2i)][[d3i]]).cumsum() > np.random.rand()) # idx of d4
+        d5i = np.argmax(normalize(d[(d0i, d1i, d2i, d3i)][[d4i]]).cumsum() > np.random.rand()) # idx of d5
+        distout[(d0i, d1i, d2i, d3i, d4i, d4i)] += 1
+    return(distout)
+
+def bootstrap_dist_from_dist3(dist):
+    n = dist.sum()
+    ### np.indices returns a list of each d's indices that, when zipped, provides a list of indexes into a high-d distribution
+    distidxs = (list(zip(*(i.flatten() for i in np.indices(dist.shape))))) ### list of indices
+    ### this builds a list of distribution entries.  output probably identical to dist.flatten()
+    distvals = np.array([dist[i] for i in distidxs])
+    #distvals = dist.flatten()
+    ### create a list as long as the dataset, with that datapoint's bin number/index.  
+    ###   the bootsrap will be drawing  from this list with replacement
+    dataReconstructed = np.zeros(n, dtype=int)
+    _v = 0
+    for i,v in enumerate(distvals):
+        np.put(dataReconstructed, range(_v, _v + v), i)
+        _v = _v + v
+    ### then build the cumulative to search through
+    ### collect indexes by their "meta" index and then populate
+    idxs = (distidxs[v] for v in np.random.choice(dataReconstructed,size=n))
+    distout = np.zeros( dist.shape , dtype=int)
+    for idx in idxs: distout[idx] += 1
+    ### check
+    if False: ### if this method is implemented correctly, it should be able to reconstruct the input distribution perfectly
+        idxs = (distidxs[v] for v in dataReconstructed)
+        for idx in idxs: distout[idx] += 1
+        assert len(list(zip(distout[distout != dist], dist[distout != dist]))) == 0
+    return(distout)
+bootstrap_dist_from_dist = bootstrap_dist_from_dist3
+
+if False:
+    bootstrap_dist_from_dist1(distfull) ## 20s
+    bootstrap_dist_from_dist2(distfull) ## 50s
+    bootstrap_dist_from_dist25(distfull) ## 40s
+    bootstrap_dist_from_dist3(distfull) ## 0.5s
+    bootstrap_dist_from_dist(distfull) ## copy of implementation #3
+
+
+def draw_a_value(v, distcum):
+    ### return index of interval that v fits within: 
+    # for 5 and [0,3,7,12] returns idx 2, 
+    # which is then used to index the right index
+    ### next terminates on true, so you don't search the whole list
+    ### sorting ahead of time (big bins first)above ensures most terminations are early (10x speedup)
+    ### distcum is the cumulative of a list of bin counts of the unnormalized distrubtion
+    return(next( i for i, l in enumerate(distcum) if l > v ))
+
 def build_distribution_alt(n="full"):
     ### init output dist
-    dist = np.zeros([4,4,4,4,4])
+    dist = np.zeros([4,4,4,4,4], dtype=int)
     ### init query
     n = '' if n == "full" else 'LIMIT {}'.format(n)
     #https://stackoverflow.com/questions/32356330/how-do-i-generate-a-random-sample-of-groups-including-all-people-in-the-group
@@ -664,6 +775,7 @@ if __name__ == '__main__' and False:
     #np.set_printoptions(formatter={'float_kind':'{:f}'.format}, floatmode="maxprec")
     np.set_printoptions(formatter={'float_kind':'{:f}'.format})
     file_name = dataPath + "nbagame0021400377.json.gz"
+    file_name = dataPath + "nbagame0021400321.json.gz"
     json_strs = _get_json_str(file_name, gzipped=True)
     coordinates = all_position_data_load( jsonstr_from_filename(file_name ))
     coordinates_old = ball_data_load_old( file_name )

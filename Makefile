@@ -6,7 +6,7 @@ clean:
 	rm zzzhelp_dropdb.sql
 
 build:
-	python ./code/builddb.py
+	time python ./code/builddb.py
 
 analyze_bruno:
 	echo "This part of the pipeline includes scratch_analysis.py, mutual_information.py, utils.py, dataloader.py"
